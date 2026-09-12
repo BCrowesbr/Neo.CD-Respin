@@ -68,17 +68,17 @@ https://github.com/niuus/NeoCDRX/blob/main/NeoCDRX_manual.pdf
 
 The emulator accepts the following BIOS images:
 
-Neo Geo CDZ BIOS (NeoCD.bin)
-Size: 524.288 bytes
-CRC32: DF9DE490
-MD5: F39572AF7584CB5B3F70AE8CC848ABA2
-SHA-1: 7BB26D1E5D1E930515219CB18BCDE5B7B23E2EDA
+Neo Geo CDZ BIOS (NeoCD.bin)  
+Size: 524.288 bytes  
+CRC32: DF9DE490  
+MD5: F39572AF7584CB5B3F70AE8CC848ABA2  
+SHA-1: 7BB26D1E5D1E930515219CB18BCDE5B7B23E2EDA  
 
-Neo Geo CDZ BIOS (NeoCD.bin)
-Size: 524.288 bytes
-CRC32: 33697892
-MD5: 11526D58D4C524DAEF7D5D677DC6B004
-SHA-1: B0F1C4FA8D4492A04431805F6537138B842B549F
+Neo Geo CDZ BIOS (NeoCD.bin)  
+Size: 524.288 bytes  
+CRC32: 33697892  
+MD5: 11526D58D4C524DAEF7D5D677DC6B004  
+SHA-1: B0F1C4FA8D4492A04431805F6537138B842B549F  
 
 Once you are done, you can proceed to run the emulator. 
 
@@ -168,25 +168,25 @@ Wii Classic Controller
 
 ::::::: CREDITS & THANKS ::::::::::::::::::::::::::::::::::::::::::
 
-• NeoCD-RX (NiuuS)
-• NeoCD-Wii (Wiimpathy / Jacobeian)
-• NeoCD Redux Unofficial (megalomaniac)
-• NeoGeo CD Redux (Infact)
-• NEO-CD REDUX (softdev)
-• NeoCD/SDL 0.3.1 (Foster)
-• NeoGeo CDZ (NJ)
-• NeoCD 0.8 (Fabrice Martinez)
-• [M68000 C Core](https://github.com/kstenerud/Musashi) (Karl Stenerud)
-• [MAME Z80 C Core](https://github.com/mamedev/mame/tree/master/src/devices/cpu/z80) (Juergen Buchmueller)
-• Sound Core (MAMEDev.org)
-• The EQ Cookbook (Neil C / Etanza Systems)
-• The EQ Cookbook (float only version code - Shagkur)
-• WKF & IDE-EXI V1 (code from [Swiss GC](https://github.com/emukidid/swiss-gc) - emu_kidid)
-• libMAD (Underbit Technologies)
-• libZ (zlib.org)
-• TehSkeen forum (2006-2009)
-• NeoCDRX emu bg - Style 1 (catar1n0)
-• NeoCDRX menu design (NiuuS)
+• NeoCD-RX (NiuuS)  
+• NeoCD-Wii (Wiimpathy / Jacobeian)  
+• NeoCD Redux Unofficial (megalomaniac)  
+• NeoGeo CD Redux (Infact)  
+• NEO-CD REDUX (softdev)  
+• NeoCD/SDL 0.3.1 (Foster)  
+• NeoGeo CDZ (NJ)  
+• NeoCD 0.8 (Fabrice Martinez)  
+• [M68000 C Core](https://github.com/kstenerud/Musashi) (Karl Stenerud)  
+• [MAME Z80 C Core](https://github.com/mamedev/mame/tree/master/src/devices/cpu/z80) (Juergen Buchmueller)  
+• Sound Core (MAMEDev.org)  
+• The EQ Cookbook (Neil C / Etanza Systems)  
+• The EQ Cookbook (float only version code - Shagkur)  
+• WKF & IDE-EXI V1 (code from [Swiss GC](https://github.com/emukidid/swiss-gc) - emu_kidid)  
+• libMAD (Underbit Technologies)  
+• libZ (zlib.org)  
+• TehSkeen forum (2006-2009)  
+• NeoCDRX emu bg - Style 1 (catar1n0)  
+• NeoCDRX menu design (NiuuS)  
 
 
 ::::::: RELEVANT LINKS ::::::::::::::::::::::::::::::::::::::::::
