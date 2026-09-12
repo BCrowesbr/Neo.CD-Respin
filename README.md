@@ -32,17 +32,11 @@ not tested the GameCube version or vWii. I currently do not have the hardware se
 All features inherited from the original emulator are the work of NiuuS and the previous developers. The improvements I implemented in Neo.CD Respin are:
 
 ● Native 240p output and selectable video modes;
-
 ● CUE/BIN and CDDA support;
-
 ● CD player integrated into the emulator;
-
 ● Customizable control mapping;
-
 ● Wii Classic Controller support;
-
 ● Always Open Source!
-
 
 ::::::: CHANGELOG ::::::::::::::::::::::::::::::::::::::::::
 
