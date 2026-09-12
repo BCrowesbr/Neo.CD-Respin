@@ -41,19 +41,19 @@ All features inherited from the original emulator are the work of NiuuS and the 
 ::::::: CHANGELOG ::::::::::::::::::::::::::::::::::::::::::
 
 [1.0 - September 12, 2026]
-● Native 240p output, with the option to switch to 480i through the menu;
-● Fixed side-screen rendering in some games that previously showed cropped graphics or black vertical bars, allowing the full intended game image to be displayed;
-● CUE/BIN disc image support with integrated CDDA audio;
-● Optimized CDDA buffering and audio synchronization;
-● Expanded SFX and music equalization options; the equalizer now processes the channels separately;
-● Wii Classic Controller support;
+● Native 240p output, with the option to switch to 480i through the menu;  
+● Fixed side-screen rendering in some games that previously showed cropped graphics or black vertical bars, allowing the full intended game image to be displayed;  
+● CUE/BIN disc image support with integrated CDDA audio;  
+● Optimized CDDA buffering and audio synchronization;  
+● Expanded SFX and music equalization options; the equalizer now processes the channels separately;  
+● Wii Classic Controller support;  
 ● Controller remapping; the original NeoCD-RX default mappings are preserved for the controllers it already supported, while Neo.CD Respin adds a default profile for the Wii C
 lassic Controller. Compatible controllers can now be remapped as desired. This is especially useful for third-party controllers connected through BlueRetro. The remapping system 
-also recognizes the GameCube Controller C-Stick directions as assignable inputs, expanding the available customization options;
-● All newly implemented settings, as well as the existing settings, are now saved to a .cfg file in the NeoCDRE data folder alongside the BIOS and game directories;
-● Improved game-list navigation: Up and Down move through the list one game at a time, while Left and Right move backward or forward in blocks of eight games;
+also recognizes the GameCube Controller C-Stick directions as assignable inputs, expanding the available customization options;  
+● All newly implemented settings, as well as the existing settings, are now saved to a .cfg file in the NeoCDRE data folder alongside the BIOS and game directories;  
+● Improved game-list navigation: Up and Down move through the list one game at a time, while Left and Right move backward or forward in blocks of eight games;  
 ● Added an integrated CD Player accessible from the menu. After a game has been loaded, returning to the options menu makes the CD Player available for listening to the disc's audio 
-tracks without closing the running game.
+tracks without closing the running game.  
 
 [For additional information about NeoCD-RX and its original features, please refer to the original NeoCD-RX documentation by NiuuS] 
 https://github.com/niuus/NeoCDRX/blob/main/NeoCDRX_manual.pdf
@@ -61,10 +61,10 @@ https://github.com/niuus/NeoCDRX/blob/main/NeoCDRX_manual.pdf
 
 ::::::: INSTALLATION AND USE ::::::::::::::::::::::::::::::::::::::::::
 
-1. Extract the contents of the NeoCDRE package to the root of the SD card or USB device.
-2. Neo.CD Respin does not include a Wii Channel or forwarder. Launch the emulator through the Homebrew Channel, or use a compatible forwarder installed separately.
-3. CUE/BIN games must be placed in the "\NeoCDRE\games" folder.
-4. A compatible BIOS is required. Place it in "\NeoCDRE\bios" and rename it to "NeoCD.bin".
+1. Extract the contents of the NeoCDRE package to the root of the SD card or USB device.  
+2. Neo.CD Respin does not include a Wii Channel or forwarder. Launch the emulator through the Homebrew Channel, or use a compatible forwarder installed separately.  
+3. CUE/BIN games must be placed in the "\NeoCDRE\games" folder.  
+4. A compatible BIOS is required. Place it in "\NeoCDRE\bios" and rename it to "NeoCD.bin".  
 
 The emulator accepts the following BIOS images:
 
@@ -89,19 +89,15 @@ To configure Neo.CD Respin, press 'A' on the "Settings" box. The following optio
 • "Region" will allow you to change the emulated console region, to access other
 languages and in some cases, change or uncensor game content (fatalities, blood,
 difficulty, lives, title screens, etc.). Reload the game (not reset) for the
-setting to take effect.
-
+setting to take effect.  
 • "Save Device" offers two options, use "SD/USB" to save the SRAM memory
 (sort of a virtual memory card implemented inside the real Neo Geo CD console)
 directly to the media drive, or use "MEM Card" to save to a physical GameCube
 Memory Card, as you would on a real Neo Geo AES, to take your progress to
-another console, or just for the nostalgia factor.
-
-• "TV Mode" switches the video mode between 240p and 480i.
-
+another console, or just for the nostalgia factor.  
+• "TV Mode" switches the video mode between 240p and 480i.  
 • "SFX / Music" allows you to raise the volume on sound FX or CDDA
-tracks, or adjust the Low / Mid / High frequency bands separately.
-
+tracks, or adjust the Low / Mid / High frequency bands separately.  
 • "Controller Mapping" allows you to remap commands for any supported controller or restore the default mapping.
 
 
@@ -115,59 +111,59 @@ preserving the original disc audio structure.
 
 ::::::: SUPPORTED CONTROLLERS ::::::::::::::::::::::::::::::::::::::::::
 
-Neo.CD Respin currently supports the following:
- • Wii Remote (horizontal)
- • Wii Remote Plus (or Wii MotionPlus adapter)
- • Wii Remote+Nunchuk
- • Wii Classic Controller
- • GameCube controller
+Neo.CD Respin currently supports the following:  
+ • Wii Remote (horizontal)  
+ • Wii Remote Plus (or Wii MotionPlus adapter)  
+ • Wii Remote+Nunchuk  
+ • Wii Classic Controller  
+ • GameCube controller  
 
 
 ::::::: DEFAULT MAPPINGS ::::::::::::::::::::::::::::::::::::::::::
 
-GameCube Controller
-  Neo Geo A = B
-  Neo Geo B = A
-  Neo Geo C = Y
-  Neo Geo D = X
-  Neo Geo Select = Z
-  Neo Geo Start = START
-  Neo Geo directions = Dpad or Analog Stick
-  Force Memory Card Saving = R
-  Emu Menu = L
+GameCube Controller  
+  Neo Geo A = B  
+  Neo Geo B = A  
+  Neo Geo C = Y  
+  Neo Geo D = X  
+  Neo Geo Select = Z  
+  Neo Geo Start = START  
+  Neo Geo directions = Dpad or Analog Stick  
+  Force Memory Card Saving = R  
+  Emu Menu = L  
 
-Wii Remote (horizontal)
-  Neo Geo A = 1
-  Neo Geo B = 2
-  Neo Geo C = B
-  Neo Geo D = A
-  Neo Geo Select = MINUS (-)
-  Neo Geo Start = PLUS (+)
-  Neo Geo directions = Dpad (horizontal)
-  Force Memory Card Saving = MINUS (-) and PLUS (+) together
-  Emu Menu = Home
+Wii Remote (horizontal)  
+  Neo Geo A = 1  
+  Neo Geo B = 2  
+  Neo Geo C = B  
+  Neo Geo D = A  
+  Neo Geo Select = MINUS (-)  
+  Neo Geo Start = PLUS (+)  
+  Neo Geo directions = Dpad (horizontal)  
+  Force Memory Card Saving = MINUS (-) and PLUS (+) together  
+  Emu Menu = Home  
 
-Wii Remote + Nunchuk
-  Neo Geo A = A
-  Neo Geo B = B
-  Neo Geo C = PLUS (+)
-  Neo Geo D = 1
-  Neo Geo Select = MINUS (-)
-  Neo Geo Start = PLUS (+)
-  Neo Geo directions = Analog Stick
-  Force Memory Card Saving = MINUS (-) and PLUS (+) together
-  Emu Menu = Home
+Wii Remote + Nunchuk  
+  Neo Geo A = A  
+  Neo Geo B = B  
+  Neo Geo C = PLUS (+)  
+  Neo Geo D = 1  
+  Neo Geo Select = MINUS (-)  
+  Neo Geo Start = PLUS (+)  
+  Neo Geo directions = Analog Stick  
+  Force Memory Card Saving = MINUS (-) and PLUS (+) together  
+  Emu Menu = Home  
 
-Wii Classic Controller
-  Neo Geo A = B
-  Neo Geo B = A
-  Neo Geo C = Y
-  Neo Geo D = X
-  Neo Geo Select = MINUS (-)
-  Neo Geo Start = PLUS (+)
-  Neo Geo directions = DPad or Analog Stick
-  Force Memory Card Saving = R
-  Emu Menu = Home
+Wii Classic Controller  
+  Neo Geo A = B  
+  Neo Geo B = A  
+  Neo Geo C = Y  
+  Neo Geo D = X  
+  Neo Geo Select = MINUS (-)  
+  Neo Geo Start = PLUS (+)  
+  Neo Geo directions = DPad or Analog Stick  
+  Force Memory Card Saving = R  
+  Emu Menu = Home  
 
 
 ::::::: CREDITS & THANKS ::::::::::::::::::::::::::::::::::::::::::
