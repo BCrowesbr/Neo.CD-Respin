@@ -40,7 +40,7 @@ All features inherited from the original emulator are the work of NiuuS and the 
 
 ::::::: CHANGELOG ::::::::::::::::::::::::::::::::::::::::::
 
-[1.0 - September 12, 2026]
+[1.0 - September 12, 2026]  
 ● Native 240p output, with the option to switch to 480i through the menu;  
 ● Fixed side-screen rendering in some games that previously showed cropped graphics or black vertical bars, allowing the full intended game image to be displayed;  
 ● CUE/BIN disc image support with integrated CDDA audio;  
