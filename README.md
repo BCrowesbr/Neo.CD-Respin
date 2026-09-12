@@ -191,5 +191,5 @@ Wii Classic Controller
 
 ::::::: RELEVANT LINKS ::::::::::::::::::::::::::::::::::::::::::
 
-● Original emulator: https://github.com/niuus/NeoCDRX/releaseshttps://github.com/niuus/NeoCDRX/releases
+● Original emulator: https://github.com/niuus/NeoCDRX/releases
 
