@@ -71,7 +71,7 @@ extern const Sint32 ym_deltat_decode_tableB2[];
 }
 
 /**** ADPCM B (Delta-T control type) ****/
-inline void YM_DELTAT_ADPCM_CALC (YM_DELTAT * DELTAT);
+void YM_DELTAT_ADPCM_CALC (YM_DELTAT * DELTAT);
 
 /* INLINE void YM_DELTAT_ADPCM_CALC(YM_DELTAT *DELTAT); */
 //#define YM_INLINE_BLOCK

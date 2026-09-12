@@ -13,6 +13,7 @@
 #include <mad.h>
 #include "neocdrx.h"
 #include "madfilter.h"
+#include "cue.h"
 
 //--- Madplay filter ---------------------------------------------------------
 static struct audio_dither audio_left, audio_right;
@@ -85,8 +86,20 @@ int cdda_init(void)
     GEN_fclose(mp3file);
 
   mp3file = 0;
-  mp3_init();
 
+  if (cue_is_mounted())
+  {
+    cdda_min_track = cue_audio_first_track();
+    cdda_max_track = cue_audio_last_track();
+    cdda_current_track = 0;
+    cdda_playing = 0;
+    cdda_loop_counter = 0;
+    cdda_disabled = (cdda_min_track == 0);
+    mp3status = MP3NOTPLAYING;
+    return 1;
+  }
+
+  mp3_init();
   return 1;
 }
 
@@ -100,6 +113,24 @@ int cdda_get_disk_info(void)
 int cdda_play(int track)
 {
   char Path[1024];
+
+  if (cue_is_mounted())
+  {
+    if (cdda_playing && cdda_current_track == track)
+      return 1;
+
+    if (!cue_audio_start(track))
+      return 1;
+
+    cdda_current_track = track;
+    cdda_loop_counter = 0;
+    cdda_playing = 1;
+    cdda_track_end = 2000000;
+    mp3status = MP3PLAYING;
+    mp3end = 0;
+    cdda_disabled = 0;
+    return 1;
+  }
 
   if (cdda_disabled)
     return 1;
@@ -139,6 +170,14 @@ void cdda_pause(void)
   if (cdda_disabled)
     return;
 
+  if (cue_is_mounted())
+  {
+    /* Pause consumption only. The producer fills the ring and then sleeps. */
+    mp3status = MP3PAUSED;
+    cdda_playing = 0;
+    return;
+  }
+
   mp3status = MP3PAUSED;
   cdda_playing = 0;
 }
@@ -146,11 +185,13 @@ void cdda_pause(void)
 
 void cdda_stop(void)
 {
+  if (cue_is_mounted())
+    cue_audio_stop();
+
   if (cdda_disabled)
     return;
 
   mp3status = MP3NOTPLAYING;
-
   cdda_playing = 0;
 }
 
@@ -159,6 +200,14 @@ void cdda_resume(void)
 {
   if (cdda_disabled || cdda_playing)
     return;
+
+  if (cue_is_mounted())
+  {
+    if (mp3status == MP3PAUSED)
+      mp3status = MP3PLAYING;
+    cdda_playing = 1;
+    return;
+  }
 
   if (mp3status == MP3PAUSED)
     mp3status = MP3PLAYING;
@@ -169,6 +218,9 @@ void cdda_resume(void)
 //----------------------------------------------------------------------------
 void cdda_shutdown(void)
 {
+  if (cue_is_mounted())
+    cue_audio_stop();
+
   if (cdda_disabled)
     return;
 }
@@ -182,7 +234,7 @@ void cdda_loop_check(void)
     {
       cdda_loop_counter++;
 
-      if (mp3end)
+      if ((cue_is_mounted() && cue_audio_ended()) || (!cue_is_mounted() && mp3end))
         {
           if (cdda_autoloop)
             cdda_play(cdda_current_track);
@@ -239,8 +291,17 @@ int mp3_decoder(int len, char *outbuffer)
   static int fixincr = 0;
   static int readlen;
   int fixofs = 0;
+  int frames;
 
   memset(outbuffer, 0, len);
+
+  if (cue_is_mounted())
+  {
+    if (!cdda_playing || mp3status != MP3PLAYING)
+      return 0;
+    frames = len / 4;
+    return cue_audio_render_48k(outbuffer, frames) * 4;
+  }
 
   if (mp3status != MP3PLAYING)
     return 0;

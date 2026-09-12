@@ -1,93 +1,91 @@
-# NeoCD RX
+# Neo.CD Respin
+
+
 https://github.com/niuus/NeoCDRX/
 
-**_NeoCD RX_** is a _Neo Geo CD / Neo Geo CDZ_ emulator for the _GameCube_, _Wii_, and _Wii U_'s
-Virtual Wii. It owes its existence to various other emulators:
-**_NEO-CD REDUX_** (Softdev), **_NeoGeo CD Redux_** (Infact), **_NeoCD-Wii_** (Wiimpathy
-/ Jacobeian), **_NeoCD Redux Unofficial_** (megalomaniac). **_NEO-CD REDUX_** was itself
-based on **_NeoCD/SDL_** 0.3.1 (Foster) and **_NeoGeo CDZ_** (NJ) emulator,
-which are source ports of the original **_NeoCD_** emulator (Fabrice Martinez).
+Neo.CD Respin is a direct fork of NeoCD-RX (NiuuS) and a continuation of the work of several developers who dedicated their time and effort to Neo Geo CD emulation on the Wii: 
+NeoCD-RX (NiuuS), NEO-CD REDUX (Softdev), NeoGeo CD Redux (Infact), NeoCD-Wii (Wiimpathy / Jacobeian), and NeoCD Redux Unofficial (megalomaniac). NEO-CD REDUX was itself based on 
+NeoCD/SDL 0.3.1 (Foster) and the NeoGeo CDZ (NJ) emulator, which are source ports of the original NeoCD emulator (Fabrice Martinez).
+As with any other Wii emulator distributed as homebrew, you need a console capable of running homebrew applications. All tests of this fork were performed using The Homebrew Channel 
+1.1.2. Based/forked from: https://github.com/niuus/NeoCDRX
 
-**_NeoCD RX_** is a "homebrew application" which means you will need a way to run
-unsigned code on your Nintendo Wii. The best website for getting started with
-Wii homebrew is WiiBrew (www.wiibrew.org).
-
-Based/forked from:
-https://github.com/emukidid/neogeo-cd-redux
-
-(Under GPL License)
+Neo.CD Respin is distributed under the GNU Lesser General Public License v2.1 (LGPL-2.1). 
 
 
-## FEATURES
+::::::: WHY ANOTHER FORK? ::::::::::::::::::::::::::::::::::::::::::
 
-* Z80 emulator core 3.6
-*	M68000 emulator core 3.3
-*	Wii Remote, Wii Remote Plus, Wii Remote+Nunchuk, and GameCube controller support
-*	SD/SDHC, USB, WKF (GameCube), IDE-EXI V1, DVD support
-*	UStealth USB devices support
-*	Region select for uncut content and extra languages (USA / Europe / Japan)
-*	Neo Geo CD Virtual Memory Card (8KiB battery-backed SRAM chip) support. Save directly to SD/USB or to your physical GameCube card for max nostalgia!
-*	Sound FX / Music 3-Band equalizer
-*	Super fast loading times. Original console weakness is no more!
-* Available in various skins/colors
-* Open Source!
+This version grew out of my interest in emulation on the Wii. Even with so many options available today, the Wii remains one of the most affordable ways to play older games on a CRT 
+with very good image quality. NeoCD-RX is the best emulator for this purpose, but I missed a few features that made my experience on CRTs somewhat frustrating. I had always thought it
+ would be interesting if the emulator could run at 240p and, at the same time, provide a more convenient experience while taking the Wii's particular characteristics into account. 
+Out of curiosity, I used an AI-assisted environment to compile the project and experiment with changes to the original source code, and I found that these changes were viable when 
+implemented carefully. This allowed me to implement a number of improvements that greatly improved my experience with the emulator. I believe making the result public is worthwhile so 
+the community can see it, but above all I hope it encourages other people to revisit what has already been created for the Wii and explore improvements that can further enhance the 
+experience. Once again, all credit goes to NiuuS and the other developers for the work done over the years. Without their work, this fork would never have been possible. Thank you very 
+much.
+
+IMPORTANT: Everything in this fork was designed with Wii users playing on CRTs through composite video or S-Video in mind. I did not focus on the experience on modern TVs, and I have 
+not tested the GameCube version or vWii. I currently do not have the hardware setup required for those tests, although this may change in the future.
 
 
-## RECENT CHANGELOG
+::::::: FEATURES ::::::::::::::::::::::::::::::::::::::::::
 
-[1.0.02 - April 03, 2023]
-* First release.
-* Fully working SDHC & USB support. You shouldn't see the emulator complaining again about the BIOS not being found, if you already have the proper file in the correct folder, specially on USB devices.
-* Virtual Neo Geo Memory Card saving is fixed again. Use SD/USB or the GameCube Memory Card, the latter also works on Wii (backwards compatible unit).
-* Fixed GameCube controller analog stick support. It wasn't working on Wii, only when used on a GameCube console.
-* Rearranged internal menus for future expansion.
-* Some tidying up.
+All features inherited from the original emulator are the work of NiuuS and the previous developers. The improvements I implemented in Neo.CD Respin are:
+● Native 240p output and selectable video modes;
+● CUE/BIN and CDDA support;
+● CD player integrated into the emulator;
+● Customizable control mapping;
+● Wii Classic Controller support;
+● Always Open Source!
 
-[older update history in the **NeoCDRX_manual.pdf**]
+
+::::::: CHANGELOG ::::::::::::::::::::::::::::::::::::::::::
+
+[1.0 - September 12, 2026]
+● Native 240p output, with the option to switch to 480i through the menu;
+● Fixed side-screen rendering in some games that previously showed cropped graphics or black vertical bars, allowing the full intended game image to be displayed;
+● CUE/BIN disc image support with integrated CDDA audio;
+● Optimized CDDA buffering and audio synchronization;
+● Expanded SFX and music equalization options; the equalizer now processes the channels separately;
+● Wii Classic Controller support;
+● Controller remapping; the original NeoCD-RX default mappings are preserved for the controllers it already supported, while Neo.CD Respin adds a default profile for the Wii C
+lassic Controller. Compatible controllers can now be remapped as desired. This is especially useful for third-party controllers connected through BlueRetro. The remapping system 
+also recognizes the GameCube Controller C-Stick directions as assignable inputs, expanding the available customization options;
+● All newly implemented settings, as well as the existing settings, are now saved to a .cfg file in the NeoCDRE data folder alongside the BIOS and game directories;
+● Improved game-list navigation: Up and Down move through the list one game at a time, while Left and Right move backward or forward in blocks of eight games;
+● Added an integrated CD Player accessible from the menu. After a game has been loaded, returning to the options menu makes the CD Player available for listening to the disc's audio 
+tracks without closing the running game.
+
+[For additional information about NeoCD-RX and its original features, please refer to the original NeoCD-RX documentation by NiuuS] 
 https://github.com/niuus/NeoCDRX/blob/main/NeoCDRX_manual.pdf
 
 
-## INSTALLATION AND USE
+::::::: INSTALLATION AND USE ::::::::::::::::::::::::::::::::::::::::::
 
-To use NeoCD-RX on the Wii / Wii U's Virtual Wii, you will need to extract the
-"**_apps_**" and "**_NeoCDRX_**" folders (directories) from the .zip directly to the root
-of your SD or USB media. It comes pre-packaged in the Homebrew Channel format,
-also compatible with the official forwarders. Then, you need to place your game
-files and music tracks into individually named folders inside the "**_\NeoCDRX\games_**"
-directory (an in-depth explanation for this in the correspondent section further below).
-For the GameCube port, you only need to take care of the "**_NeoCDRX_**" folder included.
+1. Extract the contents of the NeoCDRE package to the root of the SD card or USB device.
+2. Neo.CD Respin does not include a Wii Channel or forwarder. Launch the emulator through the Homebrew Channel, or use a compatible forwarder installed separately.
+3. CUE/BIN games must be placed in the "\NeoCDRE\games" folder.
+4. A compatible BIOS is required. Place it in "\NeoCDRE\bios" and rename it to "NeoCD.bin".
 
-Finally, you need to obtain a proper dump of the _Neo Geo CD/CDZ_ console BIOS.
-Copy the file inside the "**_\NeoCDRX\bios_**" directory and name it "**_NeoCD.bin_**".
-The emulator only works with the following:
+The emulator accepts the following BIOS images:
 
-```
 Neo Geo CDZ BIOS (NeoCD.bin)
 Size: 524.288 bytes
 CRC32: DF9DE490
 MD5: F39572AF7584CB5B3F70AE8CC848ABA2
 SHA-1: 7BB26D1E5D1E930515219CB18BCDE5B7B23E2EDA
-```
-```
+
 Neo Geo CDZ BIOS (NeoCD.bin)
 Size: 524.288 bytes
 CRC32: 33697892
 MD5: 11526D58D4C524DAEF7D5D677DC6B004
 SHA-1: B0F1C4FA8D4492A04431805F6537138B842B549F
-```
 
-Once you are done, you can proceed to run the emulator. Additionally, you can
-install the NeoCD-RX Forwarder Channel in your _Wii_ or _vWii_ System Menu, or the
-special NeoCD-RX Channel for Wii U, which reads the configuration and necessary
-files from your device "**_\NeoCDRX_**" folder, be it SD or USB.
+Once you are done, you can proceed to run the emulator. 
 
 
-## CONFIGURATION
+::::::: CONFIGURATION ::::::::::::::::::::::::::::::::::::::::::
 
-To configure NeoCD-RX, press 'A' on the "Settings" box. This will bring up a
-screen where you can configure "Region", "Save Device", and "FX / Music Equalizer".
-
-```
+To configure Neo.CD Respin, press 'A' on the "Settings" box. The following options are available:
 • "Region" will allow you to change the emulated console region, to access other
 languages and in some cases, change or uncensor game content (fatalities, blood,
 difficulty, lives, title screens, etc.). Reload the game (not reset) for the
@@ -99,125 +97,82 @@ directly to the media drive, or use "MEM Card" to save to a physical GameCube
 Memory Card, as you would on a real Neo Geo AES, to take your progress to
 another console, or just for the nostalgia factor.
 
-• "FX / Music Equalizer" allows you to raise the volume on sound FX or MP3
-tracks, or raise the gain in Low / Mid / High frequencies to your liking.
-```
+• "TV Mode" switches the video mode between 240p and 480i.
+
+• "SFX / Music" allows you to raise the volume on sound FX or CDDA
+tracks, or adjust the Low / Mid / High frequency bands separately.
+
+• "Controller Mapping" allows you to remap commands for any supported controller or restore the default mapping.
 
 
-## PREPARING THE GAMES FOR USE WITH THE EMULATOR
+::::::: CUE/BIN SUPPORT ::::::::::::::::::::::::::::::::::::::::::
 
-For every game disc, you need to create a subdirectory inside the included
-"**_\NeoCDRX\games_**" named whatever you like, and copy all the game data files
-there. Inside this folder, create another subdirectory called "**_mp3_**", where
-you have to copy your music tracks. **IMPORTANT**: even if you won't use the
-music, the folder is needed.
-
-The music tracks need to be encoded from the original CD's Red Book standard
-44.1 kHz WAV, to MP3 format (128kbps minimum, or better), named exactly
-"**_TrackXX.mp3_**" where XX is a number that always starts at 02, as the data
-track is always 01. Free CD audio ripping software is readily available.
-
-Examples and pictures are inside the **NeoCDRX_manual.pdf**
-https://github.com/niuus/NeoCDRX/blob/main/NeoCDRX_manual.pdf
-
-After this, you are more than ready to start playing. Each game folder you
-make will be treated by the emulator as a full CD.
+Neo.CD Respin supports CUE/BIN disc images. Games must be uncompressed and placed in the "\NeoCDRE\games"  folder on the SD card or USB device.
+The .cue file and all corresponding .bin files must be kept together in the same game folder.
+Unlike the original NeoCD-RX setup, which used extracted game files and converted MP3 tracks, Neo.CD Respin plays the CD audio tracks (CDDA) directly from the CUE/BIN image, 
+preserving the original disc audio structure.
 
 
-## SUPPORTED CONTROLLERS
+::::::: SUPPORTED CONTROLLERS ::::::::::::::::::::::::::::::::::::::::::
 
-NeoCD RX currently supports the following:
-
-```
-	• Wii Remote (horizontal)
-
-	• Wii Remote Plus (or Wii MotionPlus adapter)
-
-	• Wii Remote+Nunchuk
-
-	• GameCube controller
-```
-
-## DEFAULT MAPPINGS
-
-### GameCube Controller
-			Neo Geo A = B
-			Neo Geo B = A
-			Neo Geo C = Y
-			Neo Geo D = X
-			Neo Geo Select = Z
-			Neo Geo Start = START
-			Neo Geo directions = Dpad or Analog Stick
-### Wii Remote (horizontal)
-			Neo Geo A = 1
-			Neo Geo B = 2
-			Neo Geo C = B
-			Neo Geo D = A
-			Neo Geo Select = MINUS (-)
-			Neo Geo Start = PLUS (+)
-			Neo Geo directions = Dpad (horizontal)
-### Wii Remote+ Nunchuk
-			Neo Geo A = A
-			Neo Geo B = B
-			Neo Geo C = PLUS (+)
-			Neo Geo D = 1
-			Neo Geo Select = MINUS (-)
-			Neo Geo Start = PLUS (+)
-			Neo Geo directions = Analog Stick
+Neo.CD Respin currently supports the following:
+ • Wii Remote (horizontal)
+ • Wii Remote Plus (or Wii MotionPlus adapter)
+ • Wii Remote+Nunchuk
+ • Wii Classic Controller
+ • GameCube controller
 
 
-## EMULATOR MAPPINGS
+::::::: DEFAULT MAPPINGS ::::::::::::::::::::::::::::::::::::::::::
 
-_Force saving to Virtual Memory Card (while in-game, for the games that
-support it)_
-```
-"R" button (GameCube controller)
-"PLUS (+)" and "MINUS (-)" buttons together (Wii Remote / Wii Remote+Nunchuk)
-```
-_Navigation_
-```
-Dpad or Left Analog Stick (GameCube controller)
-Dpad (Horizontal Wii Remote)
-Dpad or Nunchuk Analog Stick (Wii Remote+Nunchuk)
-```
-_Enter directory or Menu option / Change setting_
-```
-"A" button (GameCube controller)
-Button "2" (Wii Remote / Wii Remote+Nunchuk)
-```
-_Go back from any Menu_
-```
-"B" button (GameCube controller)
-Button "1" (Wii Remote / Wii Remote+Nunchuk)
-```
-_Go back from Game List_
-```
-"Z" button (GameCube controller)
-Button "HOME" (Wii Remote / Wii Remote+Nunchuk)
-```
-_Navigate one page forward on the Game List (when you have more than 8 titles)_
-```
-"R" button (GameCube controller)
-"PLUS (+)" button (Wii Remote / Wii Remote+Nunchuk)
-```
-_Navigate one page backwards on the Game List (when you have more than 8 titles)_
-```
-"L" button (GameCube controller)
-"MINUS (-)" button (Wii Remote / Wii Remote+Nunchuk)
-```
-_Mount and run a valid game directory_
-```
-"A" button (GameCube controller)
-Button "2" (Wii Remote / Wii Remote+Nunchuk)
-```
-_Failsafe video mode (Force Menu to 480i with Component / Digital cable)_
-```
-Hold "L" button right before the emulator is loading to activate
-```
+GameCube Controller
+  Neo Geo A = B
+  Neo Geo B = A
+  Neo Geo C = Y
+  Neo Geo D = X
+  Neo Geo Select = Z
+  Neo Geo Start = START
+  Neo Geo directions = Dpad or Analog Stick
+  Force Memory Card Saving = R
+  Emu Menu = L
+
+Wii Remote (horizontal)
+  Neo Geo A = 1
+  Neo Geo B = 2
+  Neo Geo C = B
+  Neo Geo D = A
+  Neo Geo Select = MINUS (-)
+  Neo Geo Start = PLUS (+)
+  Neo Geo directions = Dpad (horizontal)
+  Force Memory Card Saving = MINUS (-) and PLUS (+) together
+  Emu Menu = Home
+
+Wii Remote + Nunchuk
+  Neo Geo A = A
+  Neo Geo B = B
+  Neo Geo C = PLUS (+)
+  Neo Geo D = 1
+  Neo Geo Select = MINUS (-)
+  Neo Geo Start = PLUS (+)
+  Neo Geo directions = Analog Stick
+  Force Memory Card Saving = MINUS (-) and PLUS (+) together
+  Emu Menu = Home
+
+Wii Classic Controller
+  Neo Geo A = B
+  Neo Geo B = A
+  Neo Geo C = Y
+  Neo Geo D = X
+  Neo Geo Select = MINUS (-)
+  Neo Geo Start = PLUS (+)
+  Neo Geo directions = DPad or Analog Stick
+  Force Memory Card Saving = R
+  Emu Menu = Home
 
 
-## CREDITS & THANKS
-```
+::::::: CREDITS & THANKS ::::::::::::::::::::::::::::::::::::::::::
+
+• NeoCD-RX (NiuuS)
 • NeoCD-Wii (Wiimpathy / Jacobeian)
 • NeoCD Redux Unofficial (megalomaniac)
 • NeoGeo CD Redux (Infact)
@@ -236,10 +191,9 @@ Hold "L" button right before the emulator is loading to activate
 • TehSkeen forum (2006-2009)
 • NeoCDRX emu bg - Style 1 (catar1n0)
 • NeoCDRX menu design (NiuuS)
-```
 
 
-## RELEVANT LINKS
+::::::: RELEVANT LINKS ::::::::::::::::::::::::::::::::::::::::::
 
-* Newest/Latest NeoCDRX release at:
-https://github.com/niuus/NeoCDRX/releases
+● Original emulator: https://github.com/niuus/NeoCDRX/releaseshttps://github.com/niuus/NeoCDRX/releases
+

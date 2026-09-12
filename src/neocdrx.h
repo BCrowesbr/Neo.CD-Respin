@@ -31,6 +31,8 @@ typedef unsigned int Uint32;
 
 /*** Header files ***/
 #include <gccore.h>
+#include <strings.h>
+#define stricmp strcasecmp
 #include "m68k.h"
 #include "z80intrf.h"
 #include "fileio.h"
@@ -43,6 +45,11 @@ typedef unsigned int Uint32;
 #include "gxvideo.h"
 #include "pd4990a.h"
 #include "input.h"
+
+/*** Persistent emulator settings ***/
+void settings_load (void);
+void settings_save (void);
+void settings_apply_audio (void);
 #include "timer.h"
 #include "streams.h"
 #include "ay8910.h"

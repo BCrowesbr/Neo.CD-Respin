@@ -35,7 +35,6 @@ DrawDirSelector (int maxfile, int menupos, int currsel)
   int *p = (int *) dirbuffer;
   char *m;
   char display[40];
-  char inverse[40];
 
   DrawScreen ();
 
@@ -47,18 +46,15 @@ DrawDirSelector (int maxfile, int menupos, int currsel)
 
       if (i == currsel)
         {
-          setfgcolour (BMPANE);
-          setbgcolour (INVTEXT);
-          memset (inverse, 32, 40);
-          inverse[32] = 0;
-          memcpy (inverse, display, strlen (display));
-          gprint (64, j, inverse, TXT_DOUBLE);
+          /* Same selected text colour and size as the main menu; no background bar. */
+          setfgcolour (INVTEXT);
+          gprint (64, j, display, TXT_DOUBLE_TRANSPARENT);
         }
       else
         {
-          setfgcolour (COLOR_WHITE);
-          setbgcolour (BMPANE);
-          gprint (64, j, display, TXT_DOUBLE);
+          /* Same normal text colour and size as the main menu; no background fill. */
+          setfgcolour (COLOR_BLACK);
+          gprint (64, j, display, TXT_DOUBLE_TRANSPARENT);
         }
 
       j += 32;
@@ -70,9 +66,9 @@ DrawDirSelector (int maxfile, int menupos, int currsel)
 /****************************************************************************
 * DirSelector
 *
-* A == Enter directory
+* A == Enter directory / launch game
 * B == Parent directory
-* X == Set directory
+* X == Legacy direct directory launch
 ****************************************************************************/
 void
 DirSelector (void)
@@ -106,8 +102,13 @@ DirSelector (void)
         currsel++;
         if (currsel == maxfile)
            currsel = menupos = 0;
+        /*
+         * Keep the cursor movement one item at a time.
+         * When it passes the last visible row, scroll the window by ONE item
+         * instead of jumping an entire PAGE_SIZE block.
+         */
         if ((currsel - menupos) >= PAGE_SIZE)
-           menupos += PAGE_SIZE;
+           menupos++;
 
         redraw = 1;
      }
@@ -121,8 +122,12 @@ DirSelector (void)
            menupos = currsel - PAGE_SIZE + 1;
         }
 
+        /*
+         * Same behavior in the opposite direction: move the visible window
+         * up by one entry when the cursor crosses its first row.
+         */
         if (currsel < menupos)
-           menupos -= PAGE_SIZE;
+           menupos--;
 
         if (menupos < 0)
            menupos = 0;
@@ -131,7 +136,7 @@ DirSelector (void)
      }
 
      // Previous page of displayed directories
-     if (joy & PAD_TRIGGER_L)
+     if (joy & (PAD_TRIGGER_L | PAD_BUTTON_LEFT))
      {
         menupos -= PAGE_SIZE;
         currsel = menupos;
@@ -148,17 +153,17 @@ DirSelector (void)
      }
 
      // Next page of displayed directories
-     if (joy & PAD_TRIGGER_R)
+     if (joy & (PAD_TRIGGER_R | PAD_BUTTON_RIGHT))
      {
         menupos += PAGE_SIZE;
         currsel = menupos;
-        if (currsel > maxfile)
+        if (currsel >= maxfile)
            currsel = menupos = 0;
 
         redraw = 1;
      }
 
-     // Go to Next Directory
+     // Go to Next Directory / launch selected game with the standard A button
      if (joy & PAD_BUTTON_A)
      {
         strcpy (scratchdir, basedir);
@@ -167,23 +172,50 @@ DirSelector (void)
            strcat (scratchdir, "/");
 
         m = (char *) p[currsel + 1];
-
         strcat (scratchdir, m);
 
-        if (GEN_getdir (scratchdir))
+        /*
+         * Test the selected directory itself before asking GEN_getdir().
+         *
+         * SDgetdir() returns the NUMBER OF SUBDIRECTORIES, so a perfectly valid
+         * CUE/BIN game directory containing only files returns zero.  That made
+         * the old A-button path reject it.
+         *
+         * GEN_fopen() already contains the CUE integration: if a physical
+         * IPL.TXT is absent, it attempts cue_mount_directory() and then opens
+         * the virtual IPL.TXT from the data track.
+         */
+        sprintf(megadir,"%s/IPL.TXT",scratchdir);
+        fp = GEN_fopen(megadir, "rb");
+
+        if (fp)
+        {
+           GEN_fclose(fp);
+           strcpy (basedir, scratchdir);
+           have_ROM = 1;
+           quit = 1;
+        }
+        else if (GEN_getdir (scratchdir))
         {
            maxfile = p[0];
            currsel = menupos = 0;
            strcpy (basedir, scratchdir);
         }
         else
-           GEN_getdir (basedir);
-
-        // if IPL.TXT found, automount directory
-        sprintf(megadir,"%s/IPL.TXT",basedir);
-        fp = GEN_fopen(megadir, "rb");
-        if (fp)
         {
+           /*
+            * Leaf-directory fallback.
+            *
+            * Some valid CUE/BIN game folders do not expose IPL.TXT during
+            * this early probe even though the normal game loader can mount
+            * them correctly.  The old X-button direct-launch path already
+            * handled that case by passing the selected directory to the
+            * loader.  Make A, the standard confirm button, do the same.
+            *
+            * A directory with subdirectories is still entered above; only
+            * a leaf directory reaches this fallback.
+            */
+           strcpy (basedir, scratchdir);
            have_ROM = 1;
            quit = 1;
         }

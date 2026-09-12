@@ -16,12 +16,12 @@
 
 #define LINE_BEGIN mydword = (*((unsigned int *)fspr))
 #define LINE_MID	mydword = (*((unsigned int *)fspr+1))
-#define PIXEL_LAST	col = (mydword&0x0F); if (col) *bm = paldata[col]
-#define PIXEL_R		col = (mydword&0x0F); if (col) *bm = paldata[col]; bm--
-#define PIXEL_F		col = (mydword&0x0F); if (col) *bm = paldata[col]; bm++
-#define PIXEL_LAST_OPAQUE col = (mydword&0x0F); *bm = paldata[col]
-#define PIXEL_R_OPAQUE col = (mydword&0x0F); *bm = paldata[col]; bm--
-#define PIXEL_F_OPAQUE col = (mydword&0x0F); *bm = paldata[col]; bm++
+#define PIXEL_LAST col = (mydword&0x0F); if (col && (u32)bm >= (u32)video_line_ptr[y] && (u32)bm < (u32)(video_line_ptr[y] + 320)) *bm = paldata[col]
+#define PIXEL_R col = (mydword&0x0F); if (col && (u32)bm >= (u32)video_line_ptr[y] && (u32)bm < (u32)(video_line_ptr[y] + 320)) *bm = paldata[col]; bm--
+#define PIXEL_F col = (mydword&0x0F); if (col && (u32)bm >= (u32)video_line_ptr[y] && (u32)bm < (u32)(video_line_ptr[y] + 320)) *bm = paldata[col]; bm++
+#define PIXEL_LAST_OPAQUE col = (mydword&0x0F); if ((u32)bm >= (u32)video_line_ptr[y] && (u32)bm < (u32)(video_line_ptr[y] + 320)) *bm = paldata[col]
+#define PIXEL_R_OPAQUE col = (mydword&0x0F); if ((u32)bm >= (u32)video_line_ptr[y] && (u32)bm < (u32)(video_line_ptr[y] + 320)) *bm = paldata[col]; bm--
+#define PIXEL_F_OPAQUE col = (mydword&0x0F); if ((u32)bm >= (u32)video_line_ptr[y] && (u32)bm < (u32)(video_line_ptr[y] + 320)) *bm = paldata[col]; bm++
 #define SHIFT7		mydword >>= 28
 #define SHIFT6		mydword >>= 24
 #define SHIFT5		mydword >>= 20
@@ -244,8 +244,8 @@ video_draw_screen1 ()
 		if (t1 & 0x40) {
 		//sx += rzx;            /* new x */
 		sx += (rzx + 1);
-		  // if (sx >= 0x1F0)    /* x>496 => x-=512 */
-		  //      sx -= 0x200;
+            if (sx >= 0x1F0)
+              sx -= 0x200;
 		// Wiimpathy : Wii right screen and black screen fix
 		// FIXME : without this workaround the Wii crashes, reason unknown!
 		if ( sx >= 512 )    /* x>496 => x-=512 */
@@ -259,8 +259,8 @@ video_draw_screen1 ()
 			rzy = t3 & 0xff;          /* zoom y */
 			if (rzy==0) continue;
 			sx = (t2 >> 7);
-			//if (sx >= 0x1F0)
-			//sx -= 0x200;
+            if (sx >= 0x1F0)
+              sx -= 0x200;
 
 	      // Number of tiles in this strip
 	      my = t1 & 0x3f;
@@ -388,12 +388,11 @@ video_draw_screen1 ()
   if (!fix_disable)
     video_draw_fix ();
 
-    /*** Do clipping ***/
-  for (count = 0; count < 224; count++)
-    {
-      for (sx = 0; sx < 8; sx++)
-	video_line_ptr[count][sx] = video_line_ptr[count][sx + 311] = 0;
-    }
+/*** Do clipping ***/
+for (count = 0; count < 224; count++)
+  {
+    /* clipping lateral desativado */
+  }
 
   update_video (320, 224, video_buffer);
 
@@ -435,7 +434,7 @@ video_draw_spr (unsigned int code, unsigned int color, int flipx,
   //if (video_spr_usage[code] == 0)
   //      return;
 
-  if (sx <= -8)
+  if (sx <= -16)
     return;
 
   if (zy == 16)
@@ -1330,7 +1329,7 @@ video_draw_spr_opaque (unsigned int code, unsigned int color, int flipx,
   //if (video_spr_usage[code] == 0)
   //      return;
 
-  if (sx <= -8)
+  if (sx <= -16)
     return;
 
   if (zy == 16)

@@ -13,6 +13,10 @@
 #include "neocdrx.h"
 #include "backdrop.h"
 #include "banner.h"
+#include "cue.h"
+
+#define MENU_HILITE 0x8960899B
+#define CDPLAYER_STATUS_HILITE MENU_HILITE
 
 #ifdef HW_RVL
 #include <wiiuse/wpad.h>
@@ -23,6 +27,65 @@
 extern unsigned int *xfb[2];
 extern int whichfb;
 extern GXRModeObj *vmode;
+
+/*** GUI Video: follows the selected TV Mode (240p / 480i). ***/
+static GXRModeObj *guivmode = &TVNtsc240Ds;
+static int gui_tv_mode = GAME_TVMODE_240P;
+
+static inline int
+gui_is_240p (void)
+{
+  return (gui_tv_mode == GAME_TVMODE_240P);
+}
+
+static inline int
+gui_y (int y)
+{
+  return gui_is_240p() ? (y >> 1) : y;
+}
+
+static void
+gui_select_video_mode (int mode)
+{
+  if (mode == GAME_TVMODE_480I)
+  {
+    gui_tv_mode = GAME_TVMODE_480I;
+    guivmode = &TVNtsc480IntDf;
+  }
+  else
+  {
+    gui_tv_mode = GAME_TVMODE_240P;
+    guivmode = &TVNtsc240Ds;
+  }
+}
+
+static void
+gui_apply_video_mode (int mode)
+{
+  gui_select_video_mode(mode);
+
+  /*
+   * Complete VI transition so the GUI can change mode immediately,
+   * without restarting the emulator.
+   */
+  VIDEO_SetBlack(TRUE);
+  VIDEO_Flush();
+  VIDEO_WaitVSync();
+
+  VIDEO_Configure(guivmode);
+
+  VIDEO_ClearFrameBuffer(guivmode, xfb[0], COLOR_BLACK);
+  VIDEO_ClearFrameBuffer(guivmode, xfb[1], COLOR_BLACK);
+  VIDEO_SetNextFramebuffer(xfb[whichfb]);
+
+  VIDEO_Flush();
+  VIDEO_WaitVSync();
+  if (guivmode->viTVMode & VI_NON_INTERLACE)
+    VIDEO_WaitVSync();
+
+  VIDEO_SetBlack(FALSE);
+  VIDEO_Flush();
+}
 
 /*** libOGC Default Font ***/
 extern u8 console_font_8x16[];
@@ -42,6 +105,17 @@ int use_DVD = 0;
 
 int mega = 0;
 
+/*** Persistent user settings ***/
+static float audio_opts[8] = {
+  1.0f, 1.0f,
+  1.0f, 1.0f, 1.0f,
+  1.0f, 1.0f, 1.0f
+};
+
+#define SETTINGS_MAGIC   "NEOCDRECFG"
+#define SETTINGS_VERSION 3
+
+
 /****************************************************************************
 * plotpixel
 ****************************************************************************/
@@ -49,6 +123,8 @@ static void
 plotpixel (int x, int y)
 {
   u32 pixel;
+
+  y = gui_y (y);
 
   pixel = xfb[whichfb][(y * 320) + (x >> 1)];
 
@@ -136,33 +212,87 @@ drawchar (int x, int y, char c)
   u32 colour[2];
   int offset;
   u8 bits;
+  int rows;
 
-  offset = (y * 320) + (x >> 1);
+  offset = (gui_y(y) * 320) + (x >> 1);
+  rows = gui_is_240p() ? 8 : 16;
 
-  for (yy = 0; yy < 16; yy++)
+  for (yy = 0; yy < rows; yy++)
+  {
+    if (gui_is_240p())
     {
-      bits = console_font_8x16[((c << 4) + yy)];
-
-      for (xx = 0; xx < 4; xx++)
-	{
-	  if (bits & 0x80)
-		colour[0] = fgcolour;
-	  else
-		colour[0] = bgcolour;
-
-	  if (bits & 0x40)
-		colour[1] = fgcolour;
-	  else
-		colour[1] = bgcolour;
-
-	  xfb[whichfb][offset + xx] =
-		(colour[0] & 0xffff00ff) | (colour[1] & 0xff00);
-
-	  bits <<= 2;
-	}
-
-      offset += 320;
+      bits = console_font_8x16[((c << 4) + (yy << 1))] |
+             console_font_8x16[((c << 4) + (yy << 1)) + 1];
     }
+    else
+    {
+      bits = console_font_8x16[(c << 4) + yy];
+    }
+
+    for (xx = 0; xx < 4; xx++)
+    {
+      colour[0] = (bits & 0x80) ? fgcolour : bgcolour;
+      colour[1] = (bits & 0x40) ? fgcolour : bgcolour;
+
+      xfb[whichfb][offset + xx] =
+        (colour[0] & 0xffff00ff) | (colour[1] & 0xff00);
+
+      bits <<= 2;
+    }
+
+    offset += 320;
+  }
+}
+
+/****************************************************************************
+* drawcharcredits
+*
+* Credits font enlarged to 10x10 pixels for the 240p GUI.
+* The original 8-pixel glyph is expanded horizontally to 10 pixels while
+* keeping the proven 10-line vertical reduction. This gives the Credits
+* more presence without exceeding the central backdrop frame.
+****************************************************************************/
+static void
+drawcharcredits (int x, int y, char c)
+{
+  static const u8 xmap[10] = { 0, 1, 2, 2, 3, 4, 5, 5, 6, 7 };
+  int sy, yy, pair;
+  int offset;
+  u8 bits;
+  int rep;
+  int vertical_scale;
+  u32 colour[2];
+
+  yy = 0;
+  vertical_scale = gui_is_240p() ? 1 : 2;
+
+  for (sy = 0; sy < 8; sy++)
+  {
+    bits = console_font_8x16[((c << 4) + (sy << 1))] |
+           console_font_8x16[((c << 4) + (sy << 1)) + 1];
+
+    rep = (sy == 2 || sy == 5) ? 2 : 1;
+    rep *= vertical_scale;
+
+    while (rep--)
+    {
+      offset = ((gui_y(y) + yy) * 320) + (x >> 1);
+
+      for (pair = 0; pair < 5; pair++)
+      {
+        int p0 = xmap[pair * 2];
+        int p1 = xmap[(pair * 2) + 1];
+
+        colour[0] = (bits & (0x80 >> p0)) ? fgcolour : bgcolour;
+        colour[1] = (bits & (0x80 >> p1)) ? fgcolour : bgcolour;
+
+        xfb[whichfb][offset + pair] =
+          (colour[0] & 0xffff00ff) | (colour[1] & 0xff00);
+      }
+
+      yy++;
+    }
+  }
 }
 
 /****************************************************************************
@@ -171,30 +301,143 @@ drawchar (int x, int y, char c)
 static void
 drawcharw (int x, int y, char c)
 {
-  int yy, xx;
+  int sy, rep, xx;
   int offset;
   int bits;
+  int vertical_scale;
 
-  offset = (y * 320) + (x >> 1);
+  offset = (gui_y(y) * 320) + (x >> 1);
+  vertical_scale = gui_is_240p() ? 1 : 2;
 
-  for (yy = 0; yy < 16; yy++)
+  for (sy = 0; sy < 16; sy++)
+  {
+    bits = console_font_8x16[(c << 4) + sy];
+
+    for (rep = 0; rep < vertical_scale; rep++)
     {
-      bits = console_font_8x16[((c << 4) + yy)];
+      int rowbits = bits;
 
       for (xx = 0; xx < 8; xx++)
-	{
-	  if (bits & 0x80)
-		xfb[whichfb][offset + xx] = xfb[whichfb][offset + 320 + xx] =
-		  fgcolour;
-	  else
-		xfb[whichfb][offset + xx] = xfb[whichfb][offset + 320 + xx] =
-		  bgcolour;
+      {
+        if (rowbits & 0x80)
+          xfb[whichfb][offset + xx] = fgcolour;
+        else
+          xfb[whichfb][offset + xx] = bgcolour;
 
-	  bits <<= 1;
-	}
+        rowbits <<= 1;
+      }
 
-      offset += 640;
+      offset += 320;
     }
+  }
+}
+
+/****************************************************************************
+* drawcharw_transparent
+*
+* Same 16x16 240p menu font as TXT_DOUBLE, but background pixels are not
+* written. This lets the backdrop remain visible around and through the text.
+****************************************************************************/
+static void
+drawcharw_transparent (int x, int y, char c)
+{
+  int sy, rep, xx;
+  int offset;
+  int bits;
+  int vertical_scale;
+
+  offset = (gui_y(y) * 320) + (x >> 1);
+  vertical_scale = gui_is_240p() ? 1 : 2;
+
+  for (sy = 0; sy < 16; sy++)
+  {
+    bits = console_font_8x16[(c << 4) + sy];
+
+    for (rep = 0; rep < vertical_scale; rep++)
+    {
+      int rowbits = bits;
+
+      for (xx = 0; xx < 8; xx++)
+      {
+        if (rowbits & 0x80)
+          xfb[whichfb][offset + xx] = fgcolour;
+
+        rowbits <<= 1;
+      }
+
+      offset += 320;
+    }
+  }
+}
+
+
+static void
+drawchar_medium_transparent (int x, int y, char c)
+{
+  int sy, rep, xx;
+  int offset;
+  int bits;
+  int vertical_scale;
+
+  /*
+   * Intermediate-size transparent text:
+   * same 8-pixel width as normal text, but taller.
+   */
+  vertical_scale = gui_is_240p() ? 2 : 4;
+  offset = (gui_y(y) * 320) + (x >> 1);
+
+  for (sy = 0; sy < 8; sy++)
+  {
+    bits = console_font_8x16[((c << 4) + (sy << 1))] |
+           console_font_8x16[((c << 4) + (sy << 1)) + 1];
+
+    for (rep = 0; rep < vertical_scale; rep++)
+    {
+      int rowbits = bits;
+
+      for (xx = 0; xx < 4; xx++)
+      {
+        int pos = offset + xx;
+
+        if (rowbits & 0x80)
+        {
+          u32 old = xfb[whichfb][pos];
+          xfb[whichfb][pos] =
+            (fgcolour & 0xffff00ff) | (old & 0x0000ff00);
+        }
+
+        if (rowbits & 0x40)
+        {
+          u32 old = xfb[whichfb][pos];
+          xfb[whichfb][pos] =
+            (old & 0xffff00ff) | (fgcolour & 0x0000ff00);
+        }
+
+        rowbits <<= 2;
+      }
+
+      offset += 320;
+    }
+  }
+}
+
+
+static int
+gui_text_width(const char *text, int mode)
+{
+  int n = strlen(text);
+
+  if (mode == TXT_DOUBLE || mode == TXT_DOUBLE_TRANSPARENT)
+    return n * 16;
+
+  /* mode 0 and medium-transparent mode 4 both advance 8 pixels per char */
+  return n * 8;
+}
+
+static int
+gui_center_x(const char *text, int mode)
+{
+  return (640 - gui_text_width(text, mode)) >> 1;
 }
 
 /****************************************************************************
@@ -210,15 +453,30 @@ gprint (int x, int y, char *text, int mode)
   if (!n)
     return;
 
-  if (mode != TXT_DOUBLE)
-    {
-      for (i = 0; i < n; i++, x += 8)
-	  drawchar (x, y, text[i]);
-    }
-  else
+  if (mode == TXT_DOUBLE)
     {
       for (i = 0; i < n; i++, x += 16)
 	  drawcharw (x, y, text[i]);
+    }
+  else if (mode == TXT_DOUBLE_TRANSPARENT)
+    {
+      for (i = 0; i < n; i++, x += 16)
+	  drawcharw_transparent (x, y, text[i]);
+    }
+  else if (mode == 4)
+    {
+      for (i = 0; i < n; i++, x += 8)
+        drawchar_medium_transparent (x, y, text[i]);
+    }
+  else if (mode == TXT_CREDITS_TALL)
+    {
+      for (i = 0; i < n; i++, x += 10)
+	  drawcharcredits (x, y, text[i]);
+    }
+  else
+    {
+      for (i = 0; i < n; i++, x += 8)
+	  drawchar (x, y, text[i]);
     }
 }
 
@@ -236,10 +494,28 @@ DrawScreen (void)
       inited = 1;
     }
 
+  int y;
+
   VIDEO_WaitVSync ();
 
   whichfb ^= 1;
-  memcpy (xfb[whichfb], background, 1280 * 480);
+
+  /*
+   * Backdrop is stored as 640x480 YUY2.
+   * 240p keeps the accepted every-second-line path.
+   * 480i copies the complete 480-line artwork.
+   */
+  if (gui_is_240p())
+  {
+    for (y = 0; y < 240; y++)
+      memcpy(((u8 *)xfb[whichfb]) + (y * 1280),
+             background + ((y << 1) * 1280),
+             1280);
+  }
+  else
+  {
+    memcpy((u8 *)xfb[whichfb], background, 1280 * 480);
+  }
 }
 
 /****************************************************************************
@@ -340,35 +616,47 @@ int ret = 0;
 short joy;
 
 char Title[]   = "CREDITS";
-char Coder[]   = "Coding: NiuuS";
-char Thanks[]  = "Thanks to:";
-char Softdev[] = "Softdev and his Neo-CD Redux (GCN) (2007)"; 
+char Intro1[]  = "This fork would not have been possible without";
+char Intro2[]  = "the developers who dedicated so much of their time";
+char Intro3[]  = "and effort to these projects over the years:";
+char Softdev[] = "Softdev and his Neo-CD Redux (GCN) (2007)";
 char Coders1[] = "Wiimpathy / Jacobeian for NeoCD-Wii (2011)";
 char Coders2[] = "infact for Neo-CD Redux (2011)";
 char Coders3[] = "megalomaniac for Neo-CD Redux Unofficial (2013-2016)";
-char Fun[]     = "GIGA POWER!";
+char Niuus[]   = "NiuuS, for all the work done on NeoCD-RX (2023)";
+char Fun[]     = "Let's keep it going. Wii still lives!";
 char iosVersion[20];
-char appVersion[20]= "NeoCD-RX v1.0.02";
+char appVersion[20]= "Neo.CD Respin 1.0";
 
 #ifdef HW_RVL
 	sprintf(iosVersion, "IOS : %d", IOS_GetVersion());
 #endif
 
   DrawScreen ();
-  
+
   fgcolour = COLOR_BLACK;
   bgcolour = BMPANE;
 
-  gprint (250, 160, Title, TXT_DOUBLE);
-  gprint (60, 210, Coder, 3);
-  gprint (60, 250, Thanks, 3);
-  gprint (60, 280, Softdev, 3);
-  gprint (60, 300, Coders1, 3);
-  gprint (60, 320, Coders2, 3);
-  gprint (60, 340, Coders3, 3);
-  gprint (60, 360, Fun, 3);
-  gprint (510, 390, iosVersion, 0);
-  gprint (60, 390, appVersion, 0);
+  /*
+   * Compact, left-aligned Credits block kept inside the central backdrop frame.
+   * Footer positioning remains unchanged.
+   */
+  gprint (80, 164, Title, 0);
+
+  gprint (80, 188, Intro1, 0);
+  gprint (80, 202, Intro2, 0);
+  gprint (80, 216, Intro3, 0);
+
+  gprint (80, 238, Softdev, 0);
+  gprint (80, 252, Coders1, 0);
+  gprint (80, 266, Coders2, 0);
+  gprint (80, 280, Coders3, 0);
+  gprint (80, 294, Niuus, 0);
+
+  gprint (80, 322, Fun, 0);
+
+  gprint (500, 392, iosVersion, 0);
+  gprint (72, 392, appVersion, 0);
 
   ShowScreen ();
 
@@ -386,6 +674,13 @@ char appVersion[20]= "NeoCD-RX v1.0.02";
     {
       quit = 1;
       ret = -1;
+    }
+
+    if (have_ROM && input_menu_button_down())
+    {
+      input_arm_menu_release_latch();
+      quit = 1;
+      ret = 1;
     }
   }
   return ret;
@@ -436,13 +731,19 @@ LoadingScreen (char *msg)
 ****************************************************************************/
 char menutitle[60] = { "" };
 int menu = 0;
+static int menu_y_start = 205;
 
 static void draw_menu(char items[][22], int maxitems, int selected)//(  int currsel )
 {
    int i;
    int j;
-   if (mega == 1)  j = 162; 
-   else j = 225;
+
+   /*
+    * Original NeoCDRX menu typography and spacing.
+    * Only the vertical origin is shifted slightly upward.
+    */
+   j = menu_y_start;
+
    int n;
    char msg[] = "";
    n = strlen (msg);
@@ -454,15 +755,14 @@ static void draw_menu(char items[][22], int maxitems, int selected)//(  int curr
    {
       if ( i == selected )
       {
-         setfgcolour (BMPANE);
-         setbgcolour (INVTEXT);
-         gprint( ( 640 - ( strlen(items[i]) << 4 )) >> 1, j, items[i], TXT_DOUBLE);
+         /* Selected item is indicated by text colour only; no background bar. */
+         setfgcolour (MENU_HILITE);
+         gprint( ( 640 - ( strlen(items[i]) << 4 )) >> 1, j, items[i], TXT_DOUBLE_TRANSPARENT);
       }
       else
       {
          setfgcolour (COLOR_BLACK);
-         setbgcolour (BMPANE);
-         gprint( ( 640 - ( strlen(items[i]) << 4 )) >> 1, j, items[i], TXT_DOUBLE); 
+         gprint( ( 640 - ( strlen(items[i]) << 4 )) >> 1, j, items[i], TXT_DOUBLE_TRANSPARENT);
       }
       j += 32;
    }
@@ -522,6 +822,13 @@ int DoMenu (char items[][22], int maxitems)
       quit = 1;
       ret = -1;
     }
+
+    if (have_ROM && input_menu_button_down())
+    {
+      input_arm_menu_release_latch();
+      quit = 1;
+      ret = -2;
+    }
   }
   return ret;
 }
@@ -564,51 +871,584 @@ int ChooseMemCard (void)
 * Audio menu
 ****************************************************************************/
 
+static void
+audio_make_bar(char *bar, float value)
+{
+  int step;
+  int i;
+  int p = 0;
+
+  step = (int)((value - 0.5f) * 10.0f + 0.5f);
+  if (step < 0) step = 0;
+  if (step > 10) step = 10;
+
+  bar[p++] = '|';
+
+  for (i = 0; i < 6; i++)
+    bar[p++] = (i <= step) ? '#' : '.';
+
+  bar[p++] = '|';
+
+  for (i = 6; i < 11; i++)
+    bar[p++] = (i <= step) ? '#' : '.';
+
+  bar[p++] = '|';
+  bar[p] = 0;
+}
+
+static void
+draw_audio_menu(int selected, int first)
+{
+  static const char *labels[9] =
+  {
+    "SFX Volume",
+    "Music Volume",
+    "SFX Low",
+    "SFX Mid",
+    "SFX High",
+    "Music Low",
+    "Music Mid",
+    "Music High",
+    "Go Back"
+  };
+
+  int row;
+  int index;
+  int y;
+  char bar[16];
+  char value[8];
+
+  DrawScreen();
+
+  y = 205;
+
+  for (row = 0; row < 5; row++)
+  {
+    index = first + row;
+    if (index >= 9)
+      break;
+
+    if (index == selected)
+      setfgcolour(MENU_HILITE);
+    else
+      setfgcolour(COLOR_BLACK);
+
+    if (index == 8)
+    {
+      gprint((640 - (strlen(labels[index]) << 4)) >> 1,
+             y, (char *)labels[index], TXT_DOUBLE_TRANSPARENT);
+    }
+    else
+    {
+      audio_make_bar(bar, audio_opts[index]);
+      sprintf(value, "%1.1f", audio_opts[index]);
+
+      gprint(72,  y, (char *)labels[index], TXT_DOUBLE_TRANSPARENT);
+      gprint(288, y, bar,                  TXT_DOUBLE_TRANSPARENT);
+      gprint(528, y, value,                TXT_DOUBLE_TRANSPARENT);
+    }
+
+    y += 32;
+  }
+
+  ShowScreen();
+}
+
 int audiomenu()
+{
+  int prevmenu = menu;
+  int selected = 0;
+  int first = 0;
+  int redraw = 1;
+  int quit = 0;
+  int resume_game = 0;
+  short joy;
+
+  while (!quit)
+  {
+    if (redraw)
+    {
+      draw_audio_menu(selected, first);
+      redraw = 0;
+    }
+
+    joy = getMenuButtons();
+
+    if (have_ROM && input_menu_button_down())
+    {
+      input_arm_menu_release_latch();
+      resume_game = 1;
+      quit = 1;
+      continue;
+    }
+
+    if (joy & PAD_BUTTON_UP)
+    {
+      selected--;
+      if (selected < 0)
+        selected = 8;
+
+      if (selected < first)
+        first = selected;
+      else if (selected >= first + 5)
+        first = selected - 4;
+
+      if (first < 0) first = 0;
+      if (first > 4) first = 4;
+
+      redraw = 1;
+    }
+
+    if (joy & PAD_BUTTON_DOWN)
+    {
+      selected++;
+      if (selected > 8)
+        selected = 0;
+
+      if (selected >= first + 5)
+        first = selected - 4;
+      else if (selected < first)
+        first = selected;
+
+      if (first < 0) first = 0;
+      if (first > 4) first = 4;
+
+      redraw = 1;
+    }
+
+    if ((joy & PAD_BUTTON_LEFT) && selected < 8)
+    {
+      audio_opts[selected] -= 0.1f;
+      if (audio_opts[selected] < 0.5f)
+        audio_opts[selected] = 0.5f;
+      redraw = 1;
+    }
+
+    if ((joy & PAD_BUTTON_RIGHT) && selected < 8)
+    {
+      audio_opts[selected] += 0.1f;
+      if (audio_opts[selected] > 1.5f)
+        audio_opts[selected] = 1.5f;
+      redraw = 1;
+    }
+
+    if (joy & PAD_BUTTON_A)
+    {
+      if (selected == 8)
+      {
+        quit = 1;
+      }
+      else
+      {
+        audio_opts[selected] += 0.1f;
+        if (audio_opts[selected] > 1.5f)
+          audio_opts[selected] = 0.5f;
+        redraw = 1;
+      }
+    }
+
+    if (joy & PAD_BUTTON_B)
+      quit = 1;
+  }
+
+  mixer_set(audio_opts[0], audio_opts[1],
+            audio_opts[2], audio_opts[3], audio_opts[4],
+            audio_opts[5], audio_opts[6], audio_opts[7]);
+
+  menu = prevmenu;
+  return resume_game;
+}
+
+/****************************************************************************
+* Persistent settings
+****************************************************************************/
+
+static FILE *
+settings_open_read (void)
+{
+  FILE *fp;
+
+  fp = fopen("sd:/NeoCDRE/neocdre.cfg", "rb");
+  if (fp) return fp;
+
+  fp = fopen("sd:/neocdre.cfg", "rb");
+  if (fp) return fp;
+
+#ifdef HW_RVL
+  fp = fopen("usb:/NeoCDRE/neocdre.cfg", "rb");
+  if (fp) return fp;
+
+  fp = fopen("usb:/neocdre.cfg", "rb");
+  if (fp) return fp;
+#endif
+
+  return NULL;
+}
+
+static FILE *
+settings_open_write (void)
+{
+  FILE *fp;
+
+  /*
+   * Prefer the NeoCDRE directory on SD.  If it does not exist or SD is
+   * unavailable, fall back to the root, then USB.
+   */
+  fp = fopen("sd:/NeoCDRE/neocdre.cfg", "wb");
+  if (fp) return fp;
+
+  fp = fopen("sd:/neocdre.cfg", "wb");
+  if (fp) return fp;
+
+#ifdef HW_RVL
+  fp = fopen("usb:/NeoCDRE/neocdre.cfg", "wb");
+  if (fp) return fp;
+
+  fp = fopen("usb:/neocdre.cfg", "wb");
+  if (fp) return fp;
+#endif
+
+  return NULL;
+}
+
+void
+settings_apply_audio (void)
+{
+  mixer_set(audio_opts[0], audio_opts[1],
+            audio_opts[2], audio_opts[3], audio_opts[4],
+            audio_opts[5], audio_opts[6], audio_opts[7]);
+}
+
+void
+settings_load (void)
+{
+  FILE *fp;
+  char magic[16];
+  int version;
+  int region;
+  int save_device;
+  int tvmode = GAME_TVMODE_240P;
+  int d, a;
+  int map_value;
+
+  fp = settings_open_read();
+  if (!fp)
+    return;
+
+  if (fscanf(fp, "%15s %d", magic, &version) != 2 ||
+      strcmp(magic, SETTINGS_MAGIC) != 0 ||
+      (version != 1 && version != 2 && version != SETTINGS_VERSION))
+  {
+    fclose(fp);
+    return;
+  }
+
+  if (version >= 3)
+  {
+    if (fscanf(fp, "%d %d %d", &region, &save_device, &tvmode) != 3)
+    {
+      fclose(fp);
+      return;
+    }
+  }
+  else
+  {
+    if (fscanf(fp, "%d %d", &region, &save_device) != 2)
+    {
+      fclose(fp);
+      return;
+    }
+  }
+
+  if (region >= 0 && region <= 2)
+    neogeo_region = region;
+
+  if (save_device == 0 || save_device == 1)
+    SaveDevice = save_device;
+
+  if (tvmode == GAME_TVMODE_240P || tvmode == GAME_TVMODE_480I)
+    SetGameTVMode(tvmode);
+  else
+    SetGameTVMode(GAME_TVMODE_240P);
+
+  gui_select_video_mode(GetGameTVMode());
+
+  if (version == 1)
+  {
+    float a0, a1, a2, a3, a4;
+
+    if (fscanf(fp, "%f %f %f %f %f",
+               &a0, &a1, &a2, &a3, &a4) == 5)
+    {
+      if (a0 >= 0.0f && a0 <= 2.0f) audio_opts[0] = a0;
+      if (a1 >= 0.0f && a1 <= 2.0f) audio_opts[1] = a1;
+
+      if (a2 >= 0.0f && a2 <= 2.0f)
+        audio_opts[2] = audio_opts[5] = a2;
+      if (a3 >= 0.0f && a3 <= 2.0f)
+        audio_opts[3] = audio_opts[6] = a3;
+      if (a4 >= 0.0f && a4 <= 2.0f)
+        audio_opts[4] = audio_opts[7] = a4;
+    }
+  }
+  else
+  {
+    float loaded[8];
+    int i;
+
+    if (fscanf(fp, "%f %f %f %f %f %f %f %f",
+               &loaded[0], &loaded[1], &loaded[2], &loaded[3],
+               &loaded[4], &loaded[5], &loaded[6], &loaded[7]) == 8)
+    {
+      for (i = 0; i < 8; i++)
+      {
+        if (loaded[i] >= 0.0f && loaded[i] <= 2.0f)
+          audio_opts[i] = loaded[i];
+      }
+    }
+  }
+
+  for (d = 0; d < INPUT_DEV_COUNT; d++)
+  {
+    for (a = 0; a < INPUT_MAP_COUNT; a++)
+    {
+      if (fscanf(fp, "%d", &map_value) != 1)
+      {
+        fclose(fp);
+        return;
+      }
+
+      input_set_mapping_index(d, a, map_value);
+    }
+  }
+
+  fclose(fp);
+}
+
+void
+settings_save (void)
+{
+  FILE *fp;
+  int d, a;
+  int map_value;
+
+  fp = settings_open_write();
+  if (!fp)
+    return;
+
+  fprintf(fp, "%s %d\n", SETTINGS_MAGIC, SETTINGS_VERSION);
+  fprintf(fp, "%d %d %d\n",
+          (int)neogeo_region, (int)SaveDevice, GetGameTVMode());
+
+  fprintf(fp, "%.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f\n",
+          audio_opts[0], audio_opts[1],
+          audio_opts[2], audio_opts[3], audio_opts[4],
+          audio_opts[5], audio_opts[6], audio_opts[7]);
+
+  for (d = 0; d < INPUT_DEV_COUNT; d++)
+  {
+    for (a = 0; a < INPUT_MAP_COUNT; a++)
+    {
+      map_value = input_get_mapping_index(d, a);
+
+      /*
+       * A device not present in this build is stored as -1.
+       * Wii builds have all four profiles available.
+       */
+      fprintf(fp, "%d", map_value);
+      if (a < (INPUT_MAP_COUNT - 1))
+        fputc(' ', fp);
+    }
+    fputc('\n', fp);
+  }
+
+  fflush(fp);
+  fclose(fp);
+}
+
+/****************************************************************************
+* Controller Mapping
+****************************************************************************/
+
+static const char *mapping_action_names[INPUT_MAP_COUNT] =
+{
+  "Neo A",
+  "Neo B",
+  "Neo C",
+  "Neo D",
+  "Start",
+  "Select",
+  "Emu Menu",
+  "Mem Save"
+};
+
+static void
+controller_mapping_capture_all (int device)
+{
+  int action;
+  char prompt[64];
+
+  for (action = 0; action < INPUT_MAP_COUNT; action++)
+  {
+    DrawScreen();
+
+    setfgcolour(COLOR_BLACK);
+    setbgcolour(BMPANE);
+
+    sprintf(prompt, "Press button for %s", mapping_action_names[action]);
+    gprint((640 - (strlen(prompt) * 16)) >> 1, 221,
+           prompt, TXT_DOUBLE);
+
+    setfgcolour(COLOR_WHITE);
+    setbgcolour(BMPANE);
+    gprint(176, 285, "Waiting for input...", TXT_DOUBLE);
+
+    ShowScreen();
+
+    input_capture_mapping(device, action);
+  }
+}
+
+static void
+controller_device_mapping (int device)
+{
+  int prevmenu = menu;
+  int prevmega = mega;
+  int quit = 0;
+  int ret;
+  static char items[3][22] =
+  {
+    { "Remapping" },
+    { "Reset Defaults" },
+    { "Go Back" }
+  };
+
+  mega = 1;
+
+  /*
+   * Entering a controller profile starts a complete mapping pass.
+   * Only one action is shown at a time, avoiding the old 10-line list.
+   */
+  controller_mapping_capture_all(device);
+
+  menu = 0;
+
+  while (!quit)
+  {
+    ret = DoMenu (&items[0], 3);
+
+    switch (ret)
+    {
+      case 0:
+        controller_mapping_capture_all(device);
+        menu = 0;
+        break;
+
+      case 1:
+        input_reset_mapping(device);
+        menu = 0;
+        break;
+
+      case -1:
+      case 2:
+        quit = 1;
+        break;
+    }
+  }
+
+  mega = prevmega;
+  menu = prevmenu;
+}
+
+static int
+controller_mapping_menu (void)
 {
   int prevmenu = menu;
   int quit = 0;
   int ret;
-  char buf[22];
-  int count = 6;
-  static char items[6][22] = {
-    { "SFX Volume:       1.0" },
-    { "MP3 Volume:       1.0" }, 
-    { "Low Gain:         1.0" }, 
-    { "Mid Gain:         1.0" },
-    { "High Gain:        1.0" },
-    { "Go Back" }
 
+#ifdef HW_RVL
+  int count = 6;
+  char items[6][22] =
+  {
+    { "GameCube Controller" },
+    { "Wiimote" },
+    { "Wiimote + Nunchuk" },
+    { "Classic Controller" },
+    { "Reset All Defaults" },
+    { "Go Back" }
   };
-  static float opts[5] = { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+#else
+  int count = 3;
+  char items[3][22] =
+  {
+    { "GameCube Controller" },
+    { "Reset All Defaults" },
+    { "Go Back" }
+  };
+#endif
 
   menu = 0;
 
-  while (quit == 0)
+  while (!quit)
   {
-    sprintf(items[0],"SFX Volume       %1.1f",opts[0]);
-    sprintf(items[1],"MP3 Volume       %1.1f",opts[1]);
-    sprintf(items[2],"Low Gain         %1.1f",opts[2]);
-    sprintf(items[3],"Mid Gain         %1.1f",opts[3]);
-    sprintf(items[4],"High Gain        %1.1f",opts[4]);
-    
     ret = DoMenu (&items[0], count);
+
+#ifdef HW_RVL
     switch (ret)
     {
+      case 0:
+        controller_device_mapping(INPUT_DEV_GC);
+        break;
+
+      case 1:
+        controller_device_mapping(INPUT_DEV_WIIMOTE);
+        break;
+
+      case 2:
+        controller_device_mapping(INPUT_DEV_NUNCHUK);
+        break;
+
+      case 3:
+        controller_device_mapping(INPUT_DEV_CLASSIC);
+        break;
+
+      case 4:
+        input_reset_all_mappings();
+        break;
+
+      case -2:
+        menu = prevmenu;
+        return 1;
+
       case -1:
       case 5:
-         quit = 1;
-         break;
-      default:
-          opts[menu-0] += 0.1f;
-          if ( opts[menu-0] > 2.0f ) opts[menu-0] = 1.0f;
-          strcpy(buf, items[menu]);
-          buf[18]=0;
-          sprintf(items[menu],"%s%1.1f", buf, opts[menu-0]);
-         break;
-	}
+        quit = 1;
+        break;
+    }
+#else
+    switch (ret)
+    {
+      case 0:
+        controller_device_mapping(INPUT_DEV_GC);
+        break;
+
+      case 1:
+        input_reset_all_mappings();
+        break;
+
+      case -2:
+        menu = prevmenu;
+        return 1;
+
+      case -1:
+      case 2:
+        quit = 1;
+        break;
+    }
+#endif
   }
-  mixer_set( opts[0], opts[1], opts[2], opts[3], opts[4]);
+
   menu = prevmenu;
   return 0;
 }
@@ -622,14 +1462,15 @@ int optionmenu()
   int prevmenu = menu;
   int quit = 0;
   int ret;
-  //mega = 1;
   char buf[22];
-  int count = 4;
-  static char items[4][22] = 
+  int count = 6;
+  static char items[6][22] =
   {
     { "Region:           USA" },
     { "Save Device:   SD/USB" },
-    { "FX / Music Equalizer" },
+    { "TV Mode:        240p" },
+    { "SFX / Music" },
+    { "Controller Mapping" },
     { "Go Back" }
   };
 
@@ -644,28 +1485,66 @@ int optionmenu()
     if (SaveDevice == 1) sprintf(items[1], "Save Device:   SD/USB");
     else sprintf(items[1], "Save Device: MEM Card");
 
+    sprintf(items[2], "TV Mode:        %s", GetGameTVModeName());
+
     ret = DoMenu (&items[0], count);
     switch (ret)
     {
-      case 0:	// BIOS Region
+      case 0:
          neogeo_region++;
-         if ( neogeo_region > 2 ) neogeo_region = 0;
-        break;
+         if (neogeo_region > 2) neogeo_region = 0;
+         break;
 
-      case 1:	// Save Device location
-        SaveDevice ^= 1;
-        break;
+      case 1:
+         SaveDevice ^= 1;
+         break;
 
       case 2:
-        audiomenu();
-        break;
+      {
+         int tvmode;
 
-      case -1:	// Go Back
+         if (GetGameTVMode() == GAME_TVMODE_240P)
+           tvmode = GAME_TVMODE_480I;
+         else
+           tvmode = GAME_TVMODE_240P;
+
+         SetGameTVMode(tvmode);
+         gui_apply_video_mode(tvmode);
+         break;
+      }
+
       case 3:
+         if (audiomenu())
+         {
+           settings_save();
+           menu = prevmenu;
+           return 1;
+         }
+         break;
+
+      case 4:
+         if (controller_mapping_menu())
+         {
+           settings_save();
+           menu = prevmenu;
+           return 1;
+         }
+         break;
+
+      case -2:
+         settings_save();
+         menu = prevmenu;
+         return 1;
+
+      case -1:
+      case 5:
          quit = 1;
          break;
-	}
+    }
   }
+
+  settings_save();
+
   menu = prevmenu;
   return 0;
 }
@@ -716,6 +1595,10 @@ int loadmenu ()
      ret = DoMenu (&item[0], count);
      switch (ret)
      {
+        case -2:               // Emulator-menu button - same action as Play Game
+           menu = prevmenu;
+           return 2;
+
         case -1:               // Button B - Exit
         case 5:
            quit = 1;
@@ -778,6 +1661,441 @@ int loadmenu ()
 }
 
 /****************************************************************************
+ * GUI CD Player - first functional implementation
+ *
+ * The currently mounted CUE/BIN remains loaded. Gameplay CPUs stay paused.
+ * Only CDDA is rendered and fed to the Wii audio DMA.
+ ****************************************************************************/
+static int
+cdplayer_next_audio_track(int current, int direction)
+{
+  int first = cue_audio_first_track();
+  int last = cue_audio_last_track();
+  int t;
+
+  if (!first || !last)
+    return 0;
+
+  t = current;
+
+  do
+  {
+    t += direction;
+
+    if (t > last)
+      t = first;
+    else if (t < first)
+      t = last;
+
+    if (cue_audio_track_exists(t))
+      return t;
+  }
+  while (t != current);
+
+  return current;
+}
+
+/*
+ * Small filled rectangle used only for the selected transport control.
+ * No animation and no continuous redraw: this is drawn only when the player
+ * screen itself is refreshed after input/state changes.
+ */
+/*
+ * Warm dark beige / muted orange highlight used only for selected text.
+ * Packed YUY2 pair; no filled selection rectangles.
+ */
+#define CDPLAYER_HILITE MENU_HILITE
+
+static int
+cdplayer_next_audio_track_no_wrap(int current)
+{
+  int last = cue_audio_last_track();
+  int t;
+
+  for (t = current + 1; t <= last; t++)
+  {
+    if (cue_audio_track_exists(t))
+      return t;
+  }
+
+  return 0;
+}
+
+static int
+cdplayer_audio_track_count(void)
+{
+  int first = cue_audio_first_track();
+  int last = cue_audio_last_track();
+  int t;
+  int count = 0;
+
+  for (t = first; t <= last; t++)
+  {
+    if (cue_audio_track_exists(t))
+      count++;
+  }
+
+  return count;
+}
+
+static int
+cdplayer_audio_track_ordinal(int track)
+{
+  int first = cue_audio_first_track();
+  int last = cue_audio_last_track();
+  int t;
+  int ordinal = 0;
+
+  for (t = first; t <= last; t++)
+  {
+    if (cue_audio_track_exists(t))
+    {
+      ordinal++;
+      if (t == track)
+        return ordinal;
+    }
+  }
+
+  return 0;
+}
+
+static void
+cdplayer_format_time(char *out, unsigned long seconds)
+{
+  unsigned long minutes = seconds / 60;
+  seconds %= 60;
+  sprintf(out, "%02lu:%02lu", minutes, seconds);
+}
+
+static void
+draw_cdplayer_symbol(int x, int y, int symbol, int selected, int playing)
+{
+  const char *text;
+
+  switch (symbol)
+  {
+    case 0:
+      text = "<<";
+      break;
+
+    case 1:
+      /*
+       * Central control is PAUSE while playing and PLAY while paused/stopped.
+       * It resumes the SAME CUE position.
+       */
+      text = playing ? "||" : ">";
+      break;
+
+    default:
+      text = ">>";
+      break;
+  }
+
+  if (selected)
+    setfgcolour(CDPLAYER_HILITE);
+  else
+    setfgcolour(COLOR_BLACK);
+
+  gprint(x, y, (char *)text, TXT_DOUBLE_TRANSPARENT);
+}
+
+static void
+draw_cdplayer(int selected,
+              int track,
+              int playing,
+              int paused,
+              unsigned long elapsed_frames_48k)
+{
+  char line[48];
+  char elapsed[16];
+  char total[16];
+  int count;
+  int ordinal;
+  unsigned long total_frames_44100;
+  unsigned long elapsed_seconds;
+  unsigned long total_seconds;
+
+  DrawScreen();
+
+  setfgcolour(COLOR_BLACK);
+
+  sprintf(line, "CD PLAYER");
+  gprint(gui_center_x(line, TXT_DOUBLE_TRANSPARENT),
+         172, line, TXT_DOUBLE_TRANSPARENT);
+
+  count = cdplayer_audio_track_count();
+  ordinal = cdplayer_audio_track_ordinal(track);
+
+  sprintf(line, "TRACK %02d / %02d", ordinal, count);
+  gprint(gui_center_x(line, TXT_DOUBLE_TRANSPARENT),
+         214, line, TXT_DOUBLE_TRANSPARENT);
+
+  if (playing)
+    sprintf(line, "PLAYING");
+  else if (paused)
+    sprintf(line, "PAUSED");
+  else
+    sprintf(line, "STOPPED");
+
+  setfgcolour(CDPLAYER_STATUS_HILITE);
+  gprint(gui_center_x(line, 4),
+         248, line, 4);
+
+  elapsed_seconds = elapsed_frames_48k / 48000UL;
+
+  total_frames_44100 = cue_audio_track_frames_44100(track);
+  total_seconds = total_frames_44100 / 44100UL;
+
+  cdplayer_format_time(elapsed, elapsed_seconds);
+  cdplayer_format_time(total, total_seconds);
+
+  sprintf(line, "%s / %s", elapsed, total);
+  setfgcolour(COLOR_BLACK);
+  gprint(gui_center_x(line, 4),
+         278, line, 4);
+
+  draw_cdplayer_symbol(224, 320, 0, selected == 0, playing);
+  draw_cdplayer_symbol(312, 320, 1, selected == 1, playing);
+  draw_cdplayer_symbol(400, 320, 2, selected == 2, playing);
+
+  if (selected == 3)
+    setfgcolour(CDPLAYER_HILITE);
+  else
+    setfgcolour(COLOR_BLACK);
+
+  sprintf(line, "GO BACK");
+  gprint(gui_center_x(line, TXT_DOUBLE_TRANSPARENT),
+         364, line, TXT_DOUBLE_TRANSPARENT);
+
+  ShowScreen();
+}
+
+/*
+ * Keep roughly 50 ms of CDDA queued before any redraw.
+ * elapsed_frames_48k counts decoded player audio and therefore preserves
+ * position across PAUSE/RESUME.
+ */
+static int
+cdplayer_fill_audio(int *track, unsigned long *elapsed_frames_48k)
+{
+  int changed = 0;
+
+  while (cdda_playing && audio_player_queued_frames() < 2400)
+  {
+    int was_playing = cdda_playing;
+    int bytes;
+
+    cdda_loop_check();
+
+    if (was_playing && !cdda_playing)
+    {
+      int next = cdplayer_next_audio_track_no_wrap(*track);
+
+      if (next)
+      {
+        *track = next;
+        *elapsed_frames_48k = 0;
+        cdda_play(*track);
+      }
+
+      changed = 1;
+    }
+
+    if (!cdda_playing)
+      break;
+
+    bytes = mp3_decoder(3200, (char *)mp3buffer);
+    if (bytes > 0)
+      *elapsed_frames_48k += (unsigned long)(bytes / 4);
+
+    audio_player_update();
+  }
+
+  return changed;
+}
+
+static int
+cdplayer_menu(void)
+{
+  int first;
+  int track;
+  int selected = 1;
+  int redraw = 1;
+  int quit = 0;
+  int paused = 0;
+  int saved_track;
+  int saved_playing;
+  int saved_autoloop;
+  unsigned long elapsed_frames_48k = 0;
+  unsigned long last_display_second = ~0UL;
+  short joy;
+
+  if (!have_ROM || !cue_is_mounted())
+  {
+    InfoScreen((char *)"CD Player requires a loaded CUE/BIN game");
+    return 0;
+  }
+
+  first = cue_audio_first_track();
+  if (!first)
+  {
+    InfoScreen((char *)"No audio tracks found");
+    return 0;
+  }
+
+  saved_track = cdda_current_track;
+  saved_playing = cdda_playing;
+  saved_autoloop = cdda_autoloop;
+
+  cdda_autoloop = 0;
+  cdda_stop();
+  track = first;
+  audio_player_begin();
+
+  while (!quit)
+  {
+    unsigned long display_second;
+
+    joy = getMenuButtons();
+
+    if (cdplayer_fill_audio(&track, &elapsed_frames_48k))
+    {
+      paused = 0;
+      redraw = 1;
+    }
+
+    if (joy & PAD_BUTTON_LEFT)
+    {
+      if (selected < 3)
+      {
+        selected--;
+        if (selected < 0) selected = 2;
+        redraw = 1;
+      }
+    }
+
+    if (joy & PAD_BUTTON_RIGHT)
+    {
+      if (selected < 3)
+      {
+        selected++;
+        if (selected > 2) selected = 0;
+        redraw = 1;
+      }
+    }
+
+    if (joy & PAD_BUTTON_UP)
+    {
+      if (selected == 3)
+      {
+        selected = 1;
+        redraw = 1;
+      }
+    }
+
+    if (joy & PAD_BUTTON_DOWN)
+    {
+      if (selected < 3)
+      {
+        selected = 3;
+        redraw = 1;
+      }
+    }
+
+    if (joy & PAD_BUTTON_A)
+    {
+      switch (selected)
+      {
+        case 0: /* PREVIOUS */
+          track = cdplayer_next_audio_track(track, -1);
+          audio_player_end();
+          audio_player_begin();
+          elapsed_frames_48k = 0;
+          paused = 0;
+          cdda_play(track);
+          cdplayer_fill_audio(&track, &elapsed_frames_48k);
+          redraw = 1;
+          break;
+
+        case 1: /* PLAY / PAUSE / RESUME */
+          if (cdda_playing)
+          {
+            /*
+             * True pause: consumption stops but cue_audio state/position stays.
+             * Do NOT call audio_player_end() here because that would discard
+             * the player's queued position.
+             */
+            cdda_pause();
+            paused = 1;
+          }
+          else if (paused)
+          {
+            cdda_resume();
+            paused = 0;
+            cdplayer_fill_audio(&track, &elapsed_frames_48k);
+          }
+          else
+          {
+            audio_player_begin();
+            elapsed_frames_48k = 0;
+            cdda_play(track);
+            paused = 0;
+            cdplayer_fill_audio(&track, &elapsed_frames_48k);
+          }
+
+          redraw = 1;
+          break;
+
+        case 2: /* NEXT */
+          track = cdplayer_next_audio_track(track, 1);
+          audio_player_end();
+          audio_player_begin();
+          elapsed_frames_48k = 0;
+          paused = 0;
+          cdda_play(track);
+          cdplayer_fill_audio(&track, &elapsed_frames_48k);
+          redraw = 1;
+          break;
+
+        case 3:
+          quit = 1;
+          break;
+      }
+    }
+
+    if (joy & PAD_BUTTON_B)
+      quit = 1;
+
+    /*
+     * Refresh the timer only when the displayed second changes.
+     * Audio reserve has already been replenished before this redraw.
+     */
+    display_second = elapsed_frames_48k / 48000UL;
+    if (display_second != last_display_second)
+    {
+      last_display_second = display_second;
+      redraw = 1;
+    }
+
+    if (redraw)
+    {
+      draw_cdplayer(selected, track, cdda_playing, paused,
+                    elapsed_frames_48k);
+      redraw = 0;
+    }
+  }
+
+  cdda_stop();
+  audio_player_end();
+  cdda_autoloop = saved_autoloop;
+
+  if (saved_playing && saved_track > 1)
+    cdda_play(saved_track);
+
+  return 0;
+}
+
+/****************************************************************************
  * Main Menu
  *
  ****************************************************************************/
@@ -788,37 +2106,66 @@ int load_mainmenu()
   u8 quit = 0;
   menu = 0;
 #ifdef HW_RVL
-  u8 count = 6;
-  char items[6][22] =
+  u8 count;
+  char items[7][22];
 #else
-  u8 count = 6;
-  char items[6][22] =
+  u8 count;
+  char items[7][22];
 #endif
-  {
-    {"Play Game"},
-    {"Reset Game"},
-    {"Load New Game"},
-    {"Settings"},
-    {"Exit"},
-	{"Credits"}
-  };
 
 
-  // Switch to menu default rendering mode (auto detect)
-  VIDEO_Configure (vmode);
-  VIDEO_ClearFrameBuffer(vmode, xfb[whichfb], COLOR_BLACK);
+
+  // GUI follows the persisted/current gameplay TV Mode.
+  gui_select_video_mode(GetGameTVMode());
+
+  VIDEO_SetBlack (1);
+  VIDEO_Flush ();
+  VIDEO_WaitVSync ();
+
+  VIDEO_Configure (guivmode);
+  VIDEO_ClearFrameBuffer(guivmode, xfb[whichfb], COLOR_BLACK);
   VIDEO_Flush();
   VIDEO_WaitVSync();
   VIDEO_WaitVSync();
 
-
+  VIDEO_SetBlack (0);
+  VIDEO_Flush ();
 
 	while (quit == 0)
 	{
+      strcpy(items[0], "Play Game");
+      strcpy(items[1], "Reset Game");
+      strcpy(items[2], "Load New Game");
+
+      if (have_ROM)
+      {
+        strcpy(items[3], "CD Player");
+        strcpy(items[4], "Settings");
+        strcpy(items[5], "Exit");
+        strcpy(items[6], "Credits");
+        count = 7;
+        menu_y_start = 181;
+      }
+      else
+      {
+        strcpy(items[3], "Settings");
+        strcpy(items[4], "Exit");
+        strcpy(items[5], "Credits");
+        count = 6;
+        menu_y_start = 205;
+      }
+
+      if (menu >= count)
+        menu = count - 1;
+
 		ret = DoMenu (&items[0], count);
+
+      if (!have_ROM && ret >= 3)
+        ret++;
 
 	switch (ret)
 	{
+	  case -2: /*** Emulator-menu button: same action as Play Game ***/
 	  case -1:
       case  0: /*** Return to game ***/
         ret = 0;
@@ -833,22 +2180,46 @@ int load_mainmenu()
         break;
 
       case 2:  /*** Load device menu ***/
-        quit = loadmenu();
+      {
+        int loadret = loadmenu();
+
+        if (loadret == 2)
+        {
+          ret = 0;
+          quit = 1;
+        }
+        else
+        {
+          quit = loadret;
+        }
+        break;
+      }
+
+      case 3:  /*** CD Player ***/
+        cdplayer_menu();
         break;
 
-      case 3:  /*** Settings ***/
-        optionmenu();
+      case 4:  /*** Settings ***/
+        if (optionmenu())
+        {
+          ret = 0;
+          quit = 1;
+        }
         break;
 
-      case 4:  /*** Exit ***/
-        VIDEO_ClearFrameBuffer(vmode, xfb[whichfb], COLOR_BLACK);
+      case 5:  /*** Exit ***/
+        VIDEO_ClearFrameBuffer(guivmode, xfb[whichfb], COLOR_BLACK);
         VIDEO_Flush();
         VIDEO_WaitVSync();
         neogeocd_exit();
         break;
 
-      case 5:  /*** Credits ***/
-		credits();
+      case 6:  /*** Credits ***/
+        if (credits() == 1)
+        {
+          ret = 0;
+          quit = 1;
+        }
         break;
 	}
   }
@@ -859,6 +2230,7 @@ int load_mainmenu()
   while(WPAD_ButtonsHeld(0)) WPAD_ScanPads();
 #endif
 
+  menu_y_start = 205;
   return ret;
 }
 
@@ -868,23 +2240,40 @@ int load_mainmenu()
 void
 bannerscreen (void)
 {
-  int y, x, j;
+  int y, x;
   int offset;
+  int srcrow;
   int *bb = (int *) bannerunc;
 
   whichfb ^= 1;
-  offset = (200 * 320) + 40;
-  VIDEO_ClearFrameBuffer (vmode, xfb[whichfb], COLOR_BLACK);
 
-  for (y = 0, j = 0; y < banner_HEIGHT; y++)
+  VIDEO_ClearFrameBuffer(guivmode, xfb[whichfb], COLOR_BLACK);
+
+  if (gui_is_240p())
+  {
+    for (y = 0; y < (banner_HEIGHT >> 1); y++)
     {
+      offset = ((gui_y(200) + y) * 320) + 40;
+      srcrow = (y << 1) * (banner_WIDTH >> 1);
+
       for (x = 0; x < (banner_WIDTH >> 1); x++)
-		xfb[whichfb][offset + x] = bb[j++];
-
-      offset += 320;
+        xfb[whichfb][offset + x] = bb[srcrow + x];
     }
+  }
+  else
+  {
+    for (y = 0; y < banner_HEIGHT; y++)
+    {
+      offset = ((200 + y) * 320) + 40;
+      srcrow = y * (banner_WIDTH >> 1);
 
-  VIDEO_SetNextFramebuffer (xfb[whichfb]);
-  VIDEO_Flush ();
-  VIDEO_WaitVSync ();
+      for (x = 0; x < (banner_WIDTH >> 1); x++)
+        xfb[whichfb][offset + x] = bb[srcrow + x];
+    }
+  }
+
+  VIDEO_SetNextFramebuffer(xfb[whichfb]);
+  VIDEO_Flush();
+  VIDEO_WaitVSync();
 }
+

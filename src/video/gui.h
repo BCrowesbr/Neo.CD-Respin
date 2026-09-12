@@ -10,6 +10,8 @@
 #define TXT_NORMAL 0
 #define TXT_INVERSE 1
 #define TXT_DOUBLE 2
+#define TXT_CREDITS_TALL 3
+#define TXT_DOUBLE_TRANSPARENT 4
 
 #define BGCOLOUR 0x74b3745a
 #define BGBANNER 0x962a96ca

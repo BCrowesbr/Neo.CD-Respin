@@ -14,7 +14,7 @@
 #define MC_SIZE 0x4000
 #define MC_MAKER "NCRX"
 #define MC_CODE  "00"
-#define MC_FILENAME "NeoCDRX.sav"
+#define MC_FILENAME "NeoCDRE.sav"
 #define MC_COMMENT1 "NeoCD RX 1.5"
 #define MC_COMMENT2 "CD Memory Card Save"
 
@@ -149,7 +149,7 @@ else //SD Card
   FILE *fp;
   int Readed;
 
-  fp = fopen("/NeoCDRX/NeoCDRXsave.bin", "rb");
+  fp = fopen("/NeoCDRE/NeoCDREsave.bin", "rb");
   if (!fp)
     {
       // file does not exist, try to create it
@@ -255,7 +255,7 @@ else //SD Card
   FILE *fp;
   int Written;
 
-  fp = fopen("/NeoCDRX/NeoCDRXsave.bin", "wb");
+  fp = fopen("/NeoCDRE/NeoCDREsave.bin", "wb");
   if (!fp)
     {
       return 0;

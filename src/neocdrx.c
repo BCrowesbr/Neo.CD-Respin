@@ -123,53 +123,9 @@ static int restart = 0;
 ****************************************************************************/
 static void framestart(u32 arg)
 {
+	audio_vsync_sync();
 	FrameTicker++;
 }
-
-#define MEMDEBUG 0
-#if MEMDEBUG
-
-/****************************************************************************
-* memdebug
-*
-* Used to compare memory between GC load and PC
-****************************************************************************/
-void memdebug()
-{
-	FILE *fp;
-
-	printf("Dumping Memory ... Wait\n");
-	fp = fopen("program.bin", "wb");
-	fwrite(neogeo_prg_memory, 1, PRG_MEM, fp);
-	fclose(fp);
-
-	fp = fopen("rom.bin", "wb");
-	fwrite(neogeo_rom_memory, 1, ROM_MEM, fp);
-	fclose(fp);
-
-	fp = fopen("sprite.bin", "wb");
-	fwrite(neogeo_spr_memory, 1, SPR_MEM, fp);
-	fclose(fp);
-
-	fp = fopen("pcm.bin", "wb");
-	fwrite(neogeo_pcm_memory, 1, PCM_MEM, fp);
-	fclose(fp);
-
-	fp = fopen("fix.bin", "wb");
-	fwrite(neogeo_fix_memory, 1, FIX_MEM, fp);
-	fclose(fp);
-
-	fp = fopen("z80.bin", "wb");
-	fwrite(subcpu_memspace, 1, 0x10000, fp);
-	fclose(fp);
-
-	fp = fopen("fix_usage.bin", "wb");
-	fwrite(video_fix_usage, 1, 4096, fp);
-	fclose(fp);
-
-	printf("Done\n");
-}
-#endif
 
 /****************************************************************************
 * neogeo_swab
@@ -283,7 +239,9 @@ int main(void)
 #endif
     
     fatInitDefault();
-//  load_settings_default(); // eventually add settings ???
+
+    /*** Load persistent user settings after FAT devices are mounted ***/
+    settings_load();
     
 	//  0.1.46 - All memory allocated in one chunk
 	neogeo_all_memory = memalign(32, MEM_BUCKET);
@@ -316,19 +274,19 @@ int main(void)
 
 #ifdef HW_RVL
 	if (use_DVD == 1) {
-		sprintf(bios_dir, "NeoCDRX/bios/NeoCD.bin");        // search DVD root for bios - Wii
+		sprintf(bios_dir, "NeoCDRE/bios/NeoCD.bin");        // search DVD root for bios - Wii
 		sprintf(bios_dir1,"bios/NeoCD.bin");
 	}
 	else if (use_SD == 1)  {
-		sprintf(bios_dir, "sd:/NeoCDRX/bios/NeoCD.bin");    // search internal SD slot root for bios - Wii
+		sprintf(bios_dir, "sd:/NeoCDRE/bios/NeoCD.bin");    // search internal SD slot root for bios - Wii
 		sprintf(bios_dir1,"sd:/bios/NeoCD.bin");
 	}
 	else if (use_USB == 1)   {
-		sprintf(bios_dir, "usb:/NeoCDRX/bios/NeoCD.bin");    // search USB root for bios - Wii
+		sprintf(bios_dir, "usb:/NeoCDRE/bios/NeoCD.bin");    // search USB root for bios - Wii
 		sprintf(bios_dir1,"usb:/bios/NeoCD.bin");
 	}
 #else
-		sprintf(bios_dir, "NeoCDRX/bios/NeoCD.bin");        // always use SD Gecko slot for bios - GC
+		sprintf(bios_dir, "NeoCDRE/bios/NeoCD.bin");        // always use SD Gecko slot for bios - GC
 		sprintf(bios_dir1,"bios/NeoCD.bin");
 #endif
 
@@ -376,6 +334,9 @@ int main(void)
 	cdda_init();
 
 	init_sdl_audio();
+
+	/*** Apply saved mixer/equalizer values after audio is initialized ***/
+	settings_apply_audio();
 
 	neogeo_run();
 
@@ -450,9 +411,6 @@ static void neogeo_run(void)
 		/*** Decode MP3 ***/
 			mp3_decoder(3200, (char*)mp3buffer);
 
-		/*** Update Audio ***/
-		update_audio();
-
 		/*** Allow for 5 frames, user menus etc ***/
 		if (FrameTicker > 5)
 		FrameTicker = 1;
@@ -461,6 +419,9 @@ static void neogeo_run(void)
 		usleep(50);
 
 		FrameTicker--;
+
+		/*** Update Audio - synchronized immediately after VBL ***/
+		update_audio();
 
 		/*** Update video ***/
 		video_draw_screen1();
@@ -732,6 +693,7 @@ void neogeo_new_game(void)
 	AUDIO_StopDMA();
 	if (!load_mainmenu() /* !load_options() */)
 	{
+	ResumeGX();
 	AUDIO_StartDMA();
 	return;
 	}
@@ -764,6 +726,7 @@ void neogeo_new_game(void)
 	cdda_init();
 
 	restart = 1;
+	ResumeGX();
 	AUDIO_StartDMA();
 }
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<app version="2">
+  <name>Neo.CD Respin</name>
+  <coder>B_Crowesbr</coder>
+  <version>1.0</version>
+  <release_date>20230910</release_date>
+  <short_description>Neo Geo CD emulator por Wii</short_description> 
+  <long_description>
+This is an enhanced fork of NeoGeoCDRX (niuus) for Nintendo Wii featuring:
+
+. native 240p output and selectable video modes;
+. CUE/BIN and CDDA support;
+. improved audio playback and CDDA handling; 
+. integrated CD player;
+. customizable control mapping;
+. improved user interface;
+. audio and video refinements;
+
+Keep the Wii Alive!
+  </long_description>
+  <no_ios_reload/>
+</app>

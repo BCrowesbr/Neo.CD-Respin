@@ -279,7 +279,7 @@ static void SDmount()
 #endif
 
   // Test if DIR exists, else default to root DIR by Device
-  sprintf(basedir,"%s/NeoCDRX/games/",root_dir);
+  sprintf(basedir,"%s/NeoCDRE/games/",root_dir);
   DIR *dir = opendir(basedir);
   if (!dir) sprintf(basedir,"%s/",root_dir);
   else closedir(dir);

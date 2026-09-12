@@ -15,7 +15,7 @@ include $(DEVKITPPC)/wii_rules
 # SOURCES is a list of directories containing source code
 # INCLUDES is a list of directories containing extra header files
 #---------------------------------------------------------------------------------
-TARGET		:=	neocd-rx_wii
+TARGET		:=	neocd-respin_wii
 TARGETDIR   :=  executables
 BUILD		:=	build_wii
 SOURCES		:=	src/fileio src src/cdaudio src/cdrom src/z80i \
@@ -102,7 +102,7 @@ $(BUILD):
 	@if test -d build_cpus; then echo ""; else [ -d $@ ] || mkdir -p build_cpu; cd src/m68000 && $(MAKE);cd ..; cd ..; cd src/z80 && $(MAKE); fi
 	@[ -d $@ ] || mkdir -p $@
 	@echo ""
-	@echo "*** NeoCD RX Wii ******************************************************"
+	@echo "*** Neo.CD Respin Wii *************************************************"
 	@[ -d $(TARGETDIR) ] || mkdir -p $(TARGETDIR)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.wii
 	@echo "*************************************************************** Yay! \o/ ***"

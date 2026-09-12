@@ -15,7 +15,7 @@ include $(DEVKITPPC)/gamecube_rules
 # SOURCES is a list of directories containing source code
 # INCLUDES is a list of directories containing extra header files
 #---------------------------------------------------------------------------------
-TARGET		:=	neocd-rx_cube
+TARGET		:=	neocd-respin_cube
 TARGETDIR   :=  executables
 BUILD		:=	build_cube
 SOURCES		:=	src/fileio src src/cdaudio src/cdrom src/z80i \
@@ -103,7 +103,7 @@ $(BUILD):
 	@if test -d build_cpus; then echo ""; else [ -d $@ ] || mkdir -p build_cpu; cd src/m68000 && $(MAKE);cd ..; cd ..; cd src/z80 && $(MAKE); fi
 	@[ -d $@ ] || mkdir -p $@
 	@echo ""
-	@echo "*** NeoCD RX Gamecube ******************************************************"
+	@echo "*** Neo.CD Respin GameCube ********************************************"
 	@[ -d $(TARGETDIR) ] || mkdir -p $(TARGETDIR)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.gc
 	@echo "*************************************************************** Yay! \o/ ***"
