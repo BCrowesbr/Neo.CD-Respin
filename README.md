@@ -14,18 +14,19 @@ Neo.CD Respin is distributed under the GNU Lesser General Public License v2.1 (L
 
 ::::::: WHY ANOTHER FORK? ::::::::::::::::::::::::::::::::::::::::::
 
-This version grew out of my interest in emulation on the Wii. Even with so many options available today, the Wii remains one of the most affordable ways to play older games on a CRT 
-with very good image quality. NeoCD-RX is the best emulator for this purpose, but I missed a few features that made my experience on CRTs somewhat frustrating. I had always thought it
- would be interesting if the emulator could run at 240p and, at the same time, provide a more convenient experience while taking the Wii's particular characteristics into account. 
-Out of curiosity, I used an AI-assisted environment to compile the project and experiment with changes to the original source code, and I found that these changes were viable when 
-implemented carefully. This allowed me to implement a number of improvements that greatly improved my experience with the emulator. I believe making the result public is worthwhile so 
-the community can see it, but above all I hope it encourages other people to revisit what has already been created for the Wii and explore improvements that can further enhance the 
-experience. Once again, all credit goes to NiuuS and the other developers for the work done over the years. Without their work, this fork would never have been possible. Thank you very 
-much.
+This version grew out of my interest in emulation on the Wii. Even with so many options available today, the Wii remains one of the most affordable ways to play older games on a CRT with very good image quality.
 
-IMPORTANT: Everything in this fork was designed with Wii users playing on CRTs through composite video or S-Video in mind. I did not focus on the experience on modern TVs, and I have 
-not tested the GameCube version or vWii. I currently do not have the hardware setup required for those tests, although this may change in the future.
+NeoCD-RX is the best Neo Geo CD emulator for this purpose, but I missed a few features that made my experience on CRTs somewhat frustrating. I had always thought it would be interesting if the emulator could run at native 240p and, at the same time, provide a more convenient experience while taking the Wii's particular characteristics into account.
 
+Out of curiosity, I used an AI-assisted environment to compile the project and experiment with changes to the original source code. I soon realized that some of the improvements I wanted were viable if implemented carefully. This eventually led to Neo.CD Respin and to a number of changes that greatly improved my experience with the emulator.
+
+Interestingly, some of the features implemented in Neo.CD Respin — including native 240p output, button configuration, and CUE/BIN support — were already listed among NiuuS' original goals for NeoCD-RX. In this sense, Neo.CD Respin also revisits some of those original goals, with a particular focus on the Wii/CRT experience.
+
+I believe making the result public is worthwhile so the community can see it, but above all I hope it encourages other people to revisit what has already been created for the Wii and explore improvements that can further enhance the experience.
+
+Once again, all credit goes to NiuuS and the other developers for the work done over the years. Without their work, this fork would never have been possible. Thank you very much.
+
+IMPORTANT: Everything in this fork was designed with Wii users playing on CRTs through composite video or S-Video in mind. I did not focus on the experience on modern TVs, and I have not tested the GameCube version or vWii. I currently do not have the hardware setup required for those tests, although this may change in the future.
 
 ::::::: FEATURES ::::::::::::::::::::::::::::::::::::::::::
 
