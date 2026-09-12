@@ -1,7 +1,7 @@
 # Neo.CD Respin
 
 
-https://github.com/niuus/NeoCDRX/
+https://github.com/BCrowesbr/Neo.CD-Respin
 
 Neo.CD Respin is a direct fork of NeoCD-RX (NiuuS) and a continuation of the work of several developers who dedicated their time and effort to Neo Geo CD emulation on the Wii: 
 NeoCD-RX (NiuuS), NEO-CD REDUX (Softdev), NeoGeo CD Redux (Infact), NeoCD-Wii (Wiimpathy / Jacobeian), and NeoCD Redux Unofficial (megalomaniac). NEO-CD REDUX was itself based on 
