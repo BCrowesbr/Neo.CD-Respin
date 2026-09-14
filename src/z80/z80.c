@@ -4534,17 +4534,19 @@ INT32 mz80exec( INT32 cycles )
 /****************************************************************************
 * mz80nmi
 ****************************************************************************/
+void mz80SetNMIState( int state )
+{
+	set_irq_line( INPUT_LINE_NMI, state ? ASSERT_LINE : CLEAR_LINE );
+}
+
 void mz80nmi( void )
 {
-	int cycles;
-	
-	set_irq_line( INPUT_LINE_NMI, ASSERT_LINE );
-	set_irq_line( INPUT_LINE_NMI, CLEAR_LINE );
-
-	/*** Spin for 20us ***/
-	cycles = z80_execute(300);
-	CPU_Z80.cycles_done += cycles;
-	CPU_Z80.total_cycles += cycles;
+	/*
+	 * Preserve RX interrupt semantics but never execute CPU cycles from inside
+	 * the line handler. The scheduler remains the sole owner of Z80 execution.
+	 */
+	mz80SetNMIState(1);
+	mz80SetNMIState(0);
 }
 
 /****************************************************************************
@@ -4552,13 +4554,8 @@ void mz80nmi( void )
 ****************************************************************************/
 void mz80int( INT32 irq )
 {
-	int cycles;
-	
 	set_irq_line( irq, ASSERT_LINE );
 	CPU_Z80.irq_state = ASSERT_LINE;
-	cycles = z80_execute(300);
-	CPU_Z80.cycles_done += cycles;
-	CPU_Z80.total_cycles += cycles;
 }
 
 /****************************************************************************
@@ -4566,12 +4563,8 @@ void mz80int( INT32 irq )
 ****************************************************************************/
 void mz80ClearPendingInterrupt( INT32 irq )
 {
-	int cycles;
 	set_irq_line( irq, CLEAR_LINE );
 	CPU_Z80.irq_state = CLEAR_LINE;
-	cycles = z80_execute(300);
-	CPU_Z80.cycles_done += cycles;
-	CPU_Z80.total_cycles += cycles;
 }
 
 

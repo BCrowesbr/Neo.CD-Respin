@@ -102,15 +102,61 @@ static ROMPATCH rompatch[] = {
 };
 
 /****************************************************************************
-* neogeo_patch_rom
+* BIOS patch control
+*
+* Legacy game loading keeps the historical NeoCDRX patch table.
+* Native BIOS mode restores every original BIOS word first.
 ****************************************************************************/
-void neogeo_patch_rom(void)
+
+#define ROMPATCH_COUNT (sizeof(rompatch) / sizeof(rompatch[0]))
+
+static unsigned short rompatch_original[ROMPATCH_COUNT];
+static int rompatch_saved = 0;
+
+static void neogeo_patch_rom_save_original(void)
 {
     int i = 0;
 
+    if (rompatch_saved)
+        return;
+
     while (rompatch[i].offset != 0xFFFF) {
-	*(unsigned short *) (neogeo_rom_memory + rompatch[i].offset) =
-	    rompatch[i].patch;
-	i++;
+        rompatch_original[i] =
+            *(unsigned short *)(neogeo_rom_memory + rompatch[i].offset);
+        i++;
     }
+
+    rompatch_saved = 1;
+}
+
+void neogeo_patch_rom_enable(void)
+{
+    int i = 0;
+
+    neogeo_patch_rom_save_original();
+
+    while (rompatch[i].offset != 0xFFFF) {
+        *(unsigned short *)(neogeo_rom_memory + rompatch[i].offset) =
+            rompatch[i].patch;
+        i++;
+    }
+}
+
+void neogeo_patch_rom_disable(void)
+{
+    int i = 0;
+
+    if (!rompatch_saved)
+        return;
+
+    while (rompatch[i].offset != 0xFFFF) {
+        *(unsigned short *)(neogeo_rom_memory + rompatch[i].offset) =
+            rompatch_original[i];
+        i++;
+    }
+}
+
+void neogeo_patch_rom(void)
+{
+    neogeo_patch_rom_enable();
 }

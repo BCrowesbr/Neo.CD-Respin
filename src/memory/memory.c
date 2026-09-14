@@ -16,6 +16,7 @@
 #include <string.h>
 #include <time.h>
 #include "neocdrx.h"
+#include "cdhw.h"
 
 /*** For debugging ***/
 #define TRACE 0
@@ -656,9 +657,7 @@ WRITE16_HANDLER (watchdog_reset_16_w)
 static
 WRITE16_HANDLER (neogeo_z80_w)
 {
-  pending_command = 1;
-  sound_code = (data >> 8) & 0xff;
-  mz80nmi ();
+  z80_sound_command_write((data >> 8) & 0xff);
 }
 
 /****************************************************************************
@@ -841,7 +840,31 @@ static
 READ16_HANDLER (neogeo_hardcontrol_16_r)
 {
   unsigned short *mem = (unsigned short *) hwcontrol;
+  unsigned int byteaddr;
+  unsigned short value;
+
   offset &= 0xff;
+  byteaddr = offset << 1;
+
+  if (mem_mask == 0xFF00 && cdhw_handles_byte(byteaddr + 1))
+    return cdhw_read8(byteaddr + 1);
+
+  if (mem_mask == 0x00FF && cdhw_handles_byte(byteaddr))
+    return (unsigned short)(cdhw_read8(byteaddr) << 8);
+
+  if (mem_mask == 0)
+  {
+    value = mem[offset];
+
+    if (cdhw_handles_byte(byteaddr))
+      value = (value & 0x00FF) | (cdhw_read8(byteaddr) << 8);
+
+    if (cdhw_handles_byte(byteaddr + 1))
+      value = (value & 0xFF00) | cdhw_read8(byteaddr + 1);
+
+    return value;
+  }
+
   return mem[offset];
 }
 
@@ -1347,7 +1370,42 @@ static
 WRITE16_HANDLER (neogeo_hardcontrol_16_w)
 {
   unsigned short *mem = (unsigned short *) hwcontrol;
+  unsigned int byteaddr;
+
   offset &= 0xff;
+  byteaddr = offset << 1;
+
+  if (mem_mask == 0xFF00 && cdhw_handles_byte(byteaddr + 1))
+  {
+    cdhw_write8(byteaddr + 1, data & 0xFF);
+    return;
+  }
+
+  if (mem_mask == 0x00FF && cdhw_handles_byte(byteaddr))
+  {
+    cdhw_write8(byteaddr, (data >> 8) & 0xFF);
+    return;
+  }
+
+  if (mem_mask == 0)
+  {
+    int handled = 0;
+
+    if (cdhw_handles_byte(byteaddr))
+    {
+      cdhw_write8(byteaddr, (data >> 8) & 0xFF);
+      handled = 1;
+    }
+
+    if (cdhw_handles_byte(byteaddr + 1))
+    {
+      cdhw_write8(byteaddr + 1, data & 0xFF);
+      handled = 1;
+    }
+
+    if (handled)
+      return;
+  }
 
   switch (offset << 1)
     {

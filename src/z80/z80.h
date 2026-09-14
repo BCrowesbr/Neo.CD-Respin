@@ -104,6 +104,7 @@ enum
 void mz80_init(void);
 INT32 mz80exec( INT32 cycles );
 void mz80nmi( void );
+void mz80SetNMIState( int state );
 void mz80int( INT32 irq );
 void mz80ClearPendingInterrupt( INT32 irq );
 void mz80_reset( void );

@@ -17,8 +17,10 @@
 void z80_init (void);
 int mz80exec (int cycles);
 void mz80nmi (void);
+void mz80SetNMIState (int state);
 void mz80int (int irq);
 void z80_exit (void);
+void z80_sound_command_write(UINT8 data);
 
 extern UINT8 subcpu_memspace[65536];
 extern int sound_code;

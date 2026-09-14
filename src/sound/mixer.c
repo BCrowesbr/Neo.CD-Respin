@@ -11,103 +11,18 @@
 #include "streams.h"
 #include "eq.h"
 
-#define MIXBUFFER 16384
+#define MIXBUFFER 65536
 #define MIXMASK ((MIXBUFFER >> 2) -1)
-
-/* One natural NeoCDRX audio frame at 48 kHz / 60 Hz. */
-#define MIXER_FRAME_SAMPLES 800
 
 static u8 mixbuffer[MIXBUFFER];	/*** 16k mixing buffer ***/
 char mp3buffer[8192];		/*** Filled on each call by streamupdate ***/
 
-/*
- * NeoCDRE dual-bus mixer:
- * music/CDDA and Neo Geo sound have independent volume and EQ.
- * Each stereo channel owns its own EQ history.
- */
-static double musicvolume = 1.0f;
-static double soundvolume = 1.0f;
-
-static EQSTATE music_eq_l;
-static EQSTATE music_eq_r;
-static EQSTATE sound_eq_l;
-static EQSTATE sound_eq_r;
-
+static double mp3volume = 1.0f;
+static double fxvolume = 1.0f;
+static EQSTATE eqs;
 static MIXER mixer;
+static int mixer_last_frame = 0;
 
-/*
- * Near-full-scale output protection.
- * Samples below 30000 pass unchanged. Peaks above it are progressively
- * compressed instead of hitting the old abrupt +/-32767 hard clip.
- */
-#define MIX_HEADROOM           0.90
-#define OUTPUT_LIMIT_THRESHOLD 30000.0
-#define OUTPUT_LIMIT_CEILING   32767.0
-
-/*
- * Neo Geo sound-bus peak protection.
- *
- * This acts ONLY on synthesized game audio (FM/ADPCM/PSG) before it is
- * added to CDDA.  It is intentionally gentler than a compressor and leaves
- * ordinary samples untouched.  The threshold is lower than the final master
- * protection so very hot voices / impact samples cannot slam directly into
- * the CDDA sum.
- */
-#define SOUND_LIMIT_THRESHOLD 27000.0
-#define SOUND_LIMIT_CEILING   31000.0
-
-static double
-sound_soft_limit(double sample)
-{
-  double sign = 1.0;
-  double room;
-  double over;
-
-  if (sample < 0.0)
-  {
-    sign = -1.0;
-    sample = -sample;
-  }
-
-  if (sample <= SOUND_LIMIT_THRESHOLD)
-    return sign * sample;
-
-  room = SOUND_LIMIT_CEILING - SOUND_LIMIT_THRESHOLD;
-  over = sample - SOUND_LIMIT_THRESHOLD;
-
-  sample = SOUND_LIMIT_THRESHOLD +
-           (room * over) / (room + over);
-
-  return sign * sample;
-}
-
-static double
-mixer_soft_limit(double sample)
-{
-  double sign = 1.0;
-  double room;
-  double over;
-
-  if (sample < 0.0)
-  {
-    sign = -1.0;
-    sample = -sample;
-  }
-
-  if (sample <= OUTPUT_LIMIT_THRESHOLD)
-    return sign * sample;
-
-  room = OUTPUT_LIMIT_CEILING - OUTPUT_LIMIT_THRESHOLD;
-  over = sample - OUTPUT_LIMIT_THRESHOLD;
-
-  sample = OUTPUT_LIMIT_THRESHOLD +
-           (room * over) / (room + over);
-
-  return sign * sample;
-}
-
-/* v7.1: last frame delivered to AI, used only to pad a rare short DMA block. */
-static int dma_last_frame = 0;
 
 unsigned int mixer_queued_frames(void)
 {
@@ -161,53 +76,43 @@ MP3MixAudio (char * dst, u8 * src, int len)
 {
   s16 *s, *d;
   int i;
-  double raw_music_l, raw_music_r;
-  double raw_sound_l, raw_sound_r;
-  double music_l, music_r;
-  double sound_l, sound_r;
-  double mix_l, mix_r;
-  double out_l, out_r;
+  double lsample;
+  double rsample;
 
   s = (s16 *) src;
   d = (s16 *) dst;
 
   for (i = 0; i < len >> 1; i += 2)
-  {
-    /* Source level before user volume and before EQ. */
-    raw_music_l = (double)d[i];
-    raw_music_r = (double)d[i + 1];
-    raw_sound_l = (double)s[i];
-    raw_sound_r = (double)s[i + 1];
+    {
+      lsample = ((int) ((double) d[i] * mp3volume) + (int)((double) s[i] * fxvolume));
+      rsample = ((int) ((double) d[i + 1] * mp3volume) + (int)((double) s[i + 1] * fxvolume));
 
-    music_l = raw_music_l * musicvolume;
-    music_r = raw_music_r * musicvolume;
-    sound_l = raw_sound_l * soundvolume;
-    sound_r = raw_sound_r * soundvolume;
+//     lsample = (int)((double) s[i] * fxvolume);
+//      rsample = (int)((double) s[i + 1] * fxvolume);
 
-    music_l = do_3band(&music_eq_l, (int)music_l);
-    music_r = do_3band(&music_eq_r, (int)music_r);
-    sound_l = do_3band(&sound_eq_l, (int)sound_l);
-    sound_r = do_3band(&sound_eq_r, (int)sound_r);
+      lsample = do_3band (&eqs, lsample);
+      rsample = do_3band (&eqs, rsample);
 
-    /* Existing v3 Sound-only protection. */
-    sound_l = sound_soft_limit(sound_l);
-    sound_r = sound_soft_limit(sound_r);
+      if (lsample < -32768)
+	lsample = -32768;
+      else
+	{
+	  if (lsample > 32767)
+	    lsample = 32767;
+	}
 
-    mix_l = (music_l + sound_l) * MIX_HEADROOM;
-    mix_r = (music_r + sound_r) * MIX_HEADROOM;
+      if (rsample < -32768)
+	rsample = -32768;
+      else
+	{
+	  if (rsample > 32767)
+	    rsample = 32767;
+	}
 
-    /* Existing v3 final protection. */
-    out_l = mixer_soft_limit(mix_l);
-    out_r = mixer_soft_limit(mix_r);
+      d[i] = (s16) lsample;
+      d[i + 1] = (s16) rsample;
 
-    if (out_l < -32768.0) out_l = -32768.0;
-    if (out_l >  32767.0) out_l =  32767.0;
-    if (out_r < -32768.0) out_r = -32768.0;
-    if (out_r >  32767.0) out_r =  32767.0;
-
-    d[i]     = (s16)out_l;
-    d[i + 1] = (s16)out_r;
-  }
+    }
 }
 
 /****************************************************************************
@@ -219,50 +124,42 @@ void
 mixer_update_audio (void)
 {
   int i;
+  int *src = (int *) mp3buffer;
   int *dst = (int *) mixbuffer;
 
   /*** Update from sound core ***/
   streamupdate (3200);
   MP3MixAudio (mp3buffer, (u8 *) play_buffer, 3200);
 
-  /*** Update the mixbuffer.
-   *
-   * v8: keep the mixed PCM untouched.  Clock correction is performed by
-   * the Wii DMA scheduler in gcaudio.c, following the Genesis Plus GX
-   * strategy of measuring AUDIO_GetDMABytesLeft() at VSYNC.
-   */
-  for (i = 0; i < MIXER_FRAME_SAMPLES; i++)
-  {
-    dst[mixer.head] = ((int *)mp3buffer)[i];
-    mixer.head++;
-    mixer.head &= MIXMASK;
-  }
-
+  /*** Update the mixbuffer ***/
+  for (i = 0; i < 800; i++)
+    {
+      dst[mixer.head] = *src++;
+      mixer.head++;
+      mixer.head &= MIXMASK;
+    }
 }
 
 /****************************************************************************
 * mixer_update_cdda_only
 *
-* GUI CD Player producer. mp3buffer already contains one 800-frame CDDA block.
-* Mix with a zero Sound bus, preserving Music volume/EQ/headroom, but do not
-* execute streamupdate() or any emulated sound-core work while gameplay is paused.
+* Current GUI CD Player compatibility.
+* mp3buffer is already filled by mp3_decoder() in cdplayer_fill_audio().
+* Just enqueue those 800 stereo frames into the original RX ring buffer.
 ****************************************************************************/
 void
 mixer_update_cdda_only (void)
 {
   int i;
+  int *src = (int *) mp3buffer;
   int *dst = (int *) mixbuffer;
-  static u8 silent_sound[3200] ATTRIBUTE_ALIGN(32);
 
-  memset(silent_sound, 0, sizeof(silent_sound));
-  MP3MixAudio(mp3buffer, silent_sound, 3200);
-
-  for (i = 0; i < MIXER_FRAME_SAMPLES; i++)
-  {
-    dst[mixer.head] = ((int *)mp3buffer)[i];
-    mixer.head++;
-    mixer.head &= MIXMASK;
-  }
+  for (i = 0; i < 800; i++)
+    {
+      dst[mixer.head] = *src++;
+      mixer.head++;
+      mixer.head &= MIXMASK;
+    }
 }
 
 /****************************************************************************
@@ -272,13 +169,10 @@ void
 mixer_init (void)
 {
   memset (&mixer, 0, sizeof (MIXER));
-  dma_last_frame = 0;
   memset (mp3buffer, 0, 8192);
   memset (mixbuffer, 0, MIXBUFFER);
-  init_3band_state(&music_eq_l, 880, 5000, 48000);
-  init_3band_state(&music_eq_r, 880, 5000, 48000);
-  init_3band_state(&sound_eq_l, 880, 5000, 48000);
-  init_3band_state(&sound_eq_r, 880, 5000, 48000);
+  mixer_last_frame = 0;
+  init_3band_state (&eqs, 880, 5000, 48000);
 }
 
 /****************************************************************************
@@ -289,24 +183,82 @@ mixer_getaudio (u8 * outbuffer, int length)
 {
   int *dst = (int *) outbuffer;
   int *src = (int *) mixbuffer;
-  int requested_frames = length >> 2;
-  int copied_frames = 0;
-  /* Keep the Wii AI block length fixed; short FIFO reads are padded below. */
+  int frames = length >> 2;
+  unsigned int queued = mixer_queued_frames();
+  int consume_frames = frames;
+  int i;
 
-  while (copied_frames < requested_frames && mixer.tail != mixer.head)
-  {
-    dma_last_frame = src[mixer.tail];
-    *dst++ = dma_last_frame;
-    mixer.tail++;
-    mixer.tail &= MIXMASK;
-    copied_frames++;
-  }
+  /*
+   * Keep the Wii AI DMA cadence fixed at exactly 800 output frames, but
+   * recover final-ring safety margin when scheduling jitter has drained it.
+   *
+   * The old 792/800/808 experiment changed the DMA block itself and therefore
+   * changed callback cadence.  This does NOT do that: the hardware still gets
+   * the same 800-frame block every callback.  Only the number of real ring
+   * frames consumed is reduced slightly while the queue is low.
+   *
+   *  queue >= 2400 : 800 -> 800 (bit-for-bit normal path)
+   *  queue 1600..2399: 796 -> 800 (0.5% temporary stretch)
+   *  queue  792..1599: 792 -> 800 (1.0% temporary stretch)
+   *
+   * The small repeats are spread across the complete DMA block instead of
+   * being concentrated at its tail.  This lets the queue rebuild gradually
+   * after a stall and avoids the repeated starvation state seen in the
+   * runtime diagnostic.
+   */
+  if (frames == 800)
+    {
+      if (queued < 1600 && queued >= 792)
+        consume_frames = 792;
+      else if (queued < 2400 && queued >= 796)
+        consume_frames = 796;
+    }
 
-  while (copied_frames < requested_frames)
-  {
-    *dst++ = dma_last_frame;
-    copied_frames++;
-  }
+  if (queued >= (unsigned int)consume_frames)
+    {
+      unsigned int base_tail = (unsigned int)mixer.tail;
+
+      for (i = 0; i < frames; i++)
+        {
+          unsigned int src_pos;
+          int frame;
+
+          /* Nearest-neighbour time stretch, evenly distributed. */
+          src_pos = ((unsigned int)i * (unsigned int)consume_frames) /
+                    (unsigned int)frames;
+          frame = src[(base_tail + src_pos) & MIXMASK];
+          *dst++ = frame;
+          mixer_last_frame = frame;
+        }
+
+      mixer.tail = (mixer.tail + consume_frames) & MIXMASK;
+      return length;
+    }
+
+  /*
+   * True starvation: consume what is actually present, then conceal only the
+   * missing tail.  This remains the last-resort path.
+   */
+  i = 0;
+  while (i < frames && mixer.tail != mixer.head)
+    {
+      int frame = src[mixer.tail];
+
+      *dst++ = frame;
+      mixer_last_frame = frame;
+      mixer.tail++;
+      mixer.tail &= MIXMASK;
+      i++;
+    }
+
+  if (i < frames)
+    {
+      while (i < frames)
+        {
+          *dst++ = mixer_last_frame;
+          i++;
+        }
+    }
 
   return length;
 }
@@ -319,14 +271,13 @@ void mixer_set(float sound_vol, float music_vol,
                float sound_l, float sound_m, float sound_h,
                float music_l, float music_m, float music_h)
 {
-  soundvolume = (double)sound_vol;
-  musicvolume = (double)music_vol;
+	(void)music_l;
+	(void)music_m;
+	(void)music_h;
 
-  sound_eq_l.lg = sound_eq_r.lg = (double)sound_l;
-  sound_eq_l.mg = sound_eq_r.mg = (double)sound_m;
-  sound_eq_l.hg = sound_eq_r.hg = (double)sound_h;
-
-  music_eq_l.lg = music_eq_r.lg = (double)music_l;
-  music_eq_l.mg = music_eq_r.mg = (double)music_m;
-  music_eq_l.hg = music_eq_r.hg = (double)music_h;
+	mp3volume = (double)music_vol;
+	fxvolume = (double)sound_vol;
+	eqs.lg = (double)sound_l;
+	eqs.mg = (double)sound_m;
+	eqs.hg = (double)sound_h;
 }

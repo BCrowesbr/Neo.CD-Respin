@@ -11,7 +11,8 @@
 #define INPUT_DEV_WIIMOTE   1
 #define INPUT_DEV_NUNCHUK   2
 #define INPUT_DEV_CLASSIC   3
-#define INPUT_DEV_COUNT     4
+#define INPUT_DEV_USB_XINPUT 4
+#define INPUT_DEV_COUNT     5
 
 #define INPUT_MAP_A         0
 #define INPUT_MAP_B         1

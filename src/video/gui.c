@@ -247,51 +247,45 @@ drawchar (int x, int y, char c)
 /****************************************************************************
 * drawcharcredits
 *
-* Credits font enlarged to 10x10 pixels for the 240p GUI.
-* The original 8-pixel glyph is expanded horizontally to 10 pixels while
-* keeping the proven 10-line vertical reduction. This gives the Credits
-* more presence without exceeding the central backdrop frame.
+* Readable 8x10 Credits font for 240p.
+*
+* The original 8x16 font is compressed vertically to 10 rows using contiguous
+* source-row groups. Horizontal width remains the native 8 pixels.
 ****************************************************************************/
 static void
 drawcharcredits (int x, int y, char c)
 {
-  static const u8 xmap[10] = { 0, 1, 2, 2, 3, 4, 5, 5, 6, 7 };
-  int sy, yy, pair;
+  static const u8 firstrow[10] =
+    { 0, 1, 3, 4, 6, 8, 9, 11, 12, 14 };
+  static const u8 lastrow[10] =
+    { 0, 2, 3, 5, 7, 8, 10, 11, 13, 15 };
+
+  int yy, xx, sy;
+  u32 colour[2];
   int offset;
   u8 bits;
-  int rep;
-  int vertical_scale;
-  u32 colour[2];
 
-  yy = 0;
-  vertical_scale = gui_is_240p() ? 1 : 2;
+  offset = (gui_y (y) * 320) + (x >> 1);
 
-  for (sy = 0; sy < 8; sy++)
+  for (yy = 0; yy < 10; yy++)
   {
-    bits = console_font_8x16[((c << 4) + (sy << 1))] |
-           console_font_8x16[((c << 4) + (sy << 1)) + 1];
+    bits = 0;
 
-    rep = (sy == 2 || sy == 5) ? 2 : 1;
-    rep *= vertical_scale;
+    for (sy = firstrow[yy]; sy <= lastrow[yy]; sy++)
+      bits |= console_font_8x16[(c << 4) + sy];
 
-    while (rep--)
+    for (xx = 0; xx < 4; xx++)
     {
-      offset = ((gui_y(y) + yy) * 320) + (x >> 1);
+      colour[0] = (bits & 0x80) ? fgcolour : bgcolour;
+      colour[1] = (bits & 0x40) ? fgcolour : bgcolour;
 
-      for (pair = 0; pair < 5; pair++)
-      {
-        int p0 = xmap[pair * 2];
-        int p1 = xmap[(pair * 2) + 1];
+      xfb[whichfb][offset + xx] =
+        (colour[0] & 0xffff00ff) | (colour[1] & 0xff00);
 
-        colour[0] = (bits & (0x80 >> p0)) ? fgcolour : bgcolour;
-        colour[1] = (bits & (0x80 >> p1)) ? fgcolour : bgcolour;
-
-        xfb[whichfb][offset + pair] =
-          (colour[0] & 0xffff00ff) | (colour[1] & 0xff00);
-      }
-
-      yy++;
+      bits <<= 2;
     }
+
+    offset += 320;
   }
 }
 
@@ -616,47 +610,38 @@ int ret = 0;
 short joy;
 
 char Title[]   = "CREDITS";
-char Intro1[]  = "This fork would not have been possible without";
-char Intro2[]  = "the developers who dedicated so much of their time";
-char Intro3[]  = "and effort to these projects over the years:";
+char Intro1[]  = "This fork would not have been possible without the";
+char Intro2[]  = "developers who dedicated their time and effort to:";
 char Softdev[] = "Softdev and his Neo-CD Redux (GCN) (2007)";
 char Coders1[] = "Wiimpathy / Jacobeian for NeoCD-Wii (2011)";
 char Coders2[] = "infact for Neo-CD Redux (2011)";
-char Coders3[] = "megalomaniac for Neo-CD Redux Unofficial (2013-2016)";
-char Niuus[]   = "NiuuS, for all the work done on NeoCD-RX (2023)";
+char Coders3[] = "megalomaniac - Neo-CD Redux Unofficial (2013-2016)";
+char Niuus[]   = "NiuuS - NeoCD-RX (2023)";
 char Fun[]     = "Let's keep it going. Wii still lives!";
 char iosVersion[20];
-char appVersion[20]= "Neo.CD Respin 1.0";
+char appVersion[24]= "Neo.CD Respin 1.2.1";
 
 #ifdef HW_RVL
 	sprintf(iosVersion, "IOS : %d", IOS_GetVersion());
 #endif
 
   DrawScreen ();
-
+  
   fgcolour = COLOR_BLACK;
   bgcolour = BMPANE;
 
-  /*
-   * Compact, left-aligned Credits block kept inside the central backdrop frame.
-   * Footer positioning remains unchanged.
-   */
-  gprint (80, 164, Title, 0);
-
-  gprint (80, 188, Intro1, 0);
-  gprint (80, 202, Intro2, 0);
-  gprint (80, 216, Intro3, 0);
-
-  gprint (80, 238, Softdev, 0);
-  gprint (80, 252, Coders1, 0);
-  gprint (80, 266, Coders2, 0);
-  gprint (80, 280, Coders3, 0);
-  gprint (80, 294, Niuus, 0);
-
-  gprint (80, 322, Fun, 0);
-
-  gprint (500, 392, iosVersion, 0);
-  gprint (72, 392, appVersion, 0);
+  /* Keep all credit text inside the central backdrop frame. */
+  gprint (250, 160, Title, TXT_DOUBLE);
+  gprint (60, 198, Intro1, TXT_CREDITS_TALL);
+  gprint (60, 218, Intro2, TXT_CREDITS_TALL);
+  gprint (60, 252, Softdev, TXT_CREDITS_TALL);
+  gprint (60, 274, Coders1, TXT_CREDITS_TALL);
+  gprint (60, 296, Coders2, TXT_CREDITS_TALL);
+  gprint (60, 318, Coders3, TXT_CREDITS_TALL);
+  gprint (60, 340, Niuus, TXT_CREDITS_TALL);
+  gprint (60, 366, Fun, TXT_CREDITS_TALL);
+  gprint (510, 398, iosVersion, 0);
+  gprint (60, 398, appVersion, 0);
 
   ShowScreen ();
 
@@ -1366,15 +1351,17 @@ controller_mapping_menu (void)
   int prevmenu = menu;
   int quit = 0;
   int ret;
+  int previous_menu_y_start = menu_y_start;
 
 #ifdef HW_RVL
-  int count = 6;
-  char items[6][22] =
+  int count = 7;
+  char items[7][22] =
   {
     { "GameCube Controller" },
     { "Wiimote" },
     { "Wiimote + Nunchuk" },
     { "Classic Controller" },
+    { "USB XInput" },
     { "Reset All Defaults" },
     { "Go Back" }
   };
@@ -1389,6 +1376,7 @@ controller_mapping_menu (void)
 #endif
 
   menu = 0;
+  menu_y_start = 189;
 
   while (!quit)
   {
@@ -1414,15 +1402,20 @@ controller_mapping_menu (void)
         break;
 
       case 4:
+        controller_device_mapping(INPUT_DEV_USB_XINPUT);
+        break;
+
+      case 5:
         input_reset_all_mappings();
         break;
 
       case -2:
+        menu_y_start = previous_menu_y_start;
         menu = prevmenu;
         return 1;
 
       case -1:
-      case 5:
+      case 6:
         quit = 1;
         break;
     }
@@ -1449,6 +1442,7 @@ controller_mapping_menu (void)
 #endif
   }
 
+  menu_y_start = previous_menu_y_start;
   menu = prevmenu;
   return 0;
 }

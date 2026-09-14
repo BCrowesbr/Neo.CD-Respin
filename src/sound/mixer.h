@@ -18,6 +18,5 @@ void mixer_set(float sound_vol, float music_vol,
                float sound_l, float sound_m, float sound_h,
                float music_l, float music_m, float music_h);
 
-
 extern char mp3buffer[8192];
 #endif

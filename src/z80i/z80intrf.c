@@ -20,6 +20,20 @@ int sound_code = 0;
 int pending_command = 0;
 int result_code = 0;
 int nmi_over = 0;
+static int nmi_enabled = 0;
+
+static void z80_sound_check_nmi(void)
+{
+  mz80SetNMIState((nmi_enabled && pending_command) ? 1 : 0);
+}
+
+void z80_sound_command_write(UINT8 data)
+{
+  sound_code = data;
+  pending_command = 1;
+  z80_sound_check_nmi();
+}
+
 
 //---------------------------------------------------------------------------
 /*** 
@@ -60,7 +74,8 @@ PortWrite (UINT16 PortNo, UINT8 data)
       break;
 
     case 0x8:
-      /* NMI enable / acknowledge? (the data written doesn't matter) */
+      nmi_enabled = 1;
+      z80_sound_check_nmi();
       break;
 
     case 0xc:
@@ -68,7 +83,8 @@ PortWrite (UINT16 PortNo, UINT8 data)
       break;
 
     case 0x18:
-      /* NMI disable? (the data written doesn't matter) */
+      nmi_enabled = 0;
+      z80_sound_check_nmi();
       break;
 
     case 0x80:
@@ -89,6 +105,7 @@ PortRead (UINT16 PortNo)
     {
     case 0x0:
       pending_command = 0;
+      z80_sound_check_nmi();
       return sound_code;
       break;
 

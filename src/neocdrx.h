@@ -77,6 +77,8 @@ void neogeo_prio_switch(void);
 void neogeo_exit(void);
 void neogeo_exit_cdplayer(void);
 void neogeo_new_game(void);
+void neogeo_enter_bios_cdplayer(void);
+int neogeo_bios_player_active(void);
 void neogeo_trace(void);
 void neogeo_reset(void);
 

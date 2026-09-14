@@ -1,7 +1,8 @@
 /****************************************************************************
-* NeoCDRX - CUE/BIN virtual CD backend
+* NeoCDRX - CUE/BIN + CHD virtual CD backend
 *
 * Supports:
+*   - MAME CHD (data + CDDA)
 *   - CUE + single BIN
 *   - CUE + multiple BIN files
 *   - TRACK AUDIO
@@ -27,6 +28,9 @@
 #include <unistd.h>
 #include <ogc/lwp.h>
 #include <ogc/mutex.h>
+
+#include <libchdr/chd.h>
+#include <libchdr/cdrom.h>
 
 #include "cue.h"
 
@@ -78,6 +82,11 @@ typedef struct
   int index01;
   int pregap;
   int sector_size;
+
+  /* CHD-only mapping. Ignored by the CUE/BIN path. */
+  unsigned int disc_lba;
+  unsigned int chd_frame;
+  unsigned int chd_frames;
 } CUETRACK;
 
 typedef struct
@@ -93,6 +102,19 @@ typedef struct
   int mounted;
   char base_dir[CUE_PATH_MAX];
   char cue_path[CUE_PATH_MAX];
+
+  /* 0 = legacy CUE/BIN backend, 1 = CHD backend. */
+  int image_is_chd;
+  char chd_path[CUE_PATH_MAX];
+  chd_file *chd_data;
+  chd_file *chd_audio;
+  unsigned char *chd_data_hunk;
+  unsigned char *chd_audio_hunk;
+  unsigned int chd_hunkbytes;
+  unsigned int chd_frames_per_hunk;
+  int chd_data_cached_hunk;
+  int chd_audio_cached_hunk;
+  unsigned int chd_leadout;
 
   CUEFILE files[CUE_MAX_FILES];
   int file_count;
@@ -118,15 +140,6 @@ typedef struct
   unsigned int audio_ring_write;
   unsigned int audio_ring_count;
 
-  /* Diagnostic counters: RAM only, never written to storage during playback. */
-  unsigned int audio_underruns;
-  unsigned int audio_ring_min_count;
-  unsigned int audio_retry_events;
-  unsigned int audio_retry_attempts;
-  unsigned int audio_retry_recovered;
-  unsigned int audio_retry_failed;
-  unsigned int audio_hold_callbacks;
-
   unsigned char audio_consume[AUDIO_CONSUME_CACHE];
   int audio_consume_pos;
   int audio_consume_len;
@@ -147,17 +160,6 @@ typedef struct
 } CUESTATE;
 
 static CUESTATE cue;
-
-/* Snapshot of the last CDDA session. Kept outside CUESTATE so cue_unmount()
- * can clear the mounted-disc state without erasing the diagnostics. */
-static unsigned int last_audio_underruns;
-static unsigned int last_audio_ring_min_count;
-static unsigned int last_audio_retry_events;
-static unsigned int last_audio_retry_attempts;
-static unsigned int last_audio_retry_recovered;
-static unsigned int last_audio_retry_failed;
-static unsigned int last_audio_hold_callbacks;
-static int last_audio_diag_valid;
 
 static unsigned int read_le32(const unsigned char *p)
 {
@@ -275,6 +277,38 @@ static int cue_find_file_in_directory(const char *directory, char *out, int outs
       continue;
 
     if (has_extension(entry->d_name, ".cue"))
+    {
+      snprintf(out, outsize, "%s/%s", dir, entry->d_name);
+      closedir(d);
+      return 1;
+    }
+  }
+
+  closedir(d);
+  return 0;
+}
+
+static int chd_find_file_in_directory(const char *directory, char *out, int outsize)
+{
+  DIR *d;
+  struct dirent *entry;
+  char dir[CUE_PATH_MAX];
+
+  strncpy(dir, directory, sizeof(dir) - 1);
+  dir[sizeof(dir) - 1] = 0;
+  normalize_slashes(dir);
+  strip_trailing_slash(dir);
+
+  d = opendir(dir);
+  if (!d)
+    return 0;
+
+  while ((entry = readdir(d)) != NULL)
+  {
+    if (entry->d_name[0] == '.')
+      continue;
+
+    if (has_extension(entry->d_name, ".chd"))
     {
       snprintf(out, outsize, "%s/%s", dir, entry->d_name);
       closedir(d);
@@ -457,6 +491,248 @@ static int cue_parse(const char *cuepath)
   return 1;
 }
 
+/* -------------------------------------------------------------------------
+ * CHD backend
+ *
+ * MAME CD CHDs store each logical CD frame as 2352 bytes of sector data plus
+ * 96 bytes of subcode (2448 bytes total). Track starts are padded to a
+ * multiple of four frames. We expose only the 2352-byte sector portion to the
+ * existing NeoCDRX code, matching the CUE/BIN backend's view of the disc.
+ * ------------------------------------------------------------------------- */
+static int chd_track_type_from_string(const char *type)
+{
+  if (!strcasecmp(type, "AUDIO"))
+    return CUE_TRACK_AUDIO;
+  if (!strcasecmp(type, "MODE1") || !strcasecmp(type, "MODE1/2048"))
+    return CUE_TRACK_MODE1_2048;
+  if (!strcasecmp(type, "MODE1_RAW") || !strcasecmp(type, "MODE1/2352"))
+    return CUE_TRACK_MODE1_2352;
+  if (!strcasecmp(type, "MODE2_RAW") || !strcasecmp(type, "MODE2/2352"))
+    return CUE_TRACK_MODE2_2352;
+  return CUE_TRACK_UNKNOWN;
+}
+
+static int chd_parse_tracks(chd_file *cf)
+{
+  unsigned int chd_position = 0;
+  unsigned int cd_position = 0;
+  int previous_was_data = 1;
+  unsigned int idx;
+
+  cue.track_count = 0;
+  cue.data_track = -1;
+  cue.chd_leadout = 0;
+
+  for (idx = 0; idx < CUE_MAX_TRACKS; idx++)
+  {
+    char meta[512];
+    UINT32 result_len = 0;
+    UINT32 result_tag = 0;
+    UINT8 result_flags = 0;
+    chd_error err;
+    int track_number = 0;
+    int track_frames = 0;
+    int pregap = 0;
+    int postgap = 0;
+    char type[64] = {0};
+    char subtype[64] = {0};
+    char pgtype[64] = {0};
+    char pgsub[64] = {0};
+    int v2 = 1;
+    int track_type;
+    int is_vaudio = 0;
+    CUETRACK *t;
+
+    memset(meta, 0, sizeof(meta));
+    err = chd_get_metadata(cf, CDROM_TRACK_METADATA2_TAG, idx,
+                           meta, sizeof(meta) - 1, &result_len,
+                           &result_tag, &result_flags);
+    if (err != CHDERR_NONE)
+    {
+      v2 = 0;
+      memset(meta, 0, sizeof(meta));
+      err = chd_get_metadata(cf, CDROM_TRACK_METADATA_TAG, idx,
+                             meta, sizeof(meta) - 1, &result_len,
+                             &result_tag, &result_flags);
+    }
+
+    if (err != CHDERR_NONE)
+      continue;
+
+    meta[sizeof(meta) - 1] = 0;
+
+    if (v2)
+    {
+      if (sscanf(meta,
+                 "TRACK:%d TYPE:%63s SUBTYPE:%63s FRAMES:%d PREGAP:%d PGTYPE:%63s PGSUB:%63s POSTGAP:%d",
+                 &track_number, type, subtype, &track_frames, &pregap,
+                 pgtype, pgsub, &postgap) != 8)
+        return 0;
+      is_vaudio = !strcasecmp(pgtype, "VAUDIO");
+    }
+    else
+    {
+      if (sscanf(meta, "TRACK:%d TYPE:%63s SUBTYPE:%63s FRAMES:%d",
+                 &track_number, type, subtype, &track_frames) != 4)
+        return 0;
+    }
+
+    track_type = chd_track_type_from_string(type);
+    if (track_type == CUE_TRACK_UNKNOWN || track_frames <= 0)
+      return 0;
+
+    if (chd_position % CD_TRACK_PADDING)
+      chd_position += CD_TRACK_PADDING - (chd_position % CD_TRACK_PADDING);
+
+    if (pregap > 0)
+    {
+      if (!previous_was_data || is_vaudio)
+      {
+        if (track_frames <= pregap)
+          return 0;
+        chd_position += (unsigned int)pregap;
+        track_frames -= pregap;
+      }
+      cd_position += (unsigned int)pregap;
+    }
+
+    if (cue.track_count >= CUE_MAX_TRACKS)
+      return 0;
+
+    t = &cue.tracks[cue.track_count];
+    memset(t, 0, sizeof(*t));
+    t->number = track_number;
+    t->type = track_type;
+    t->file_index = 0;
+    t->index00 = -1;
+    t->index01 = 0;
+    t->pregap = pregap;
+    t->sector_size = AUDIO_SECTOR_SIZE;
+    t->disc_lba = cd_position;
+    t->chd_frame = chd_position;
+    t->chd_frames = (unsigned int)track_frames;
+
+    if (cue.data_track < 0 && track_type != CUE_TRACK_AUDIO)
+      cue.data_track = cue.track_count;
+
+    cue.track_count++;
+    chd_position += (unsigned int)track_frames;
+    cd_position += (unsigned int)track_frames;
+
+    if (postgap > 0)
+      cd_position += (unsigned int)postgap;
+
+    previous_was_data = (track_type != CUE_TRACK_AUDIO);
+  }
+
+  cue.chd_leadout = cd_position;
+  return cue.track_count > 0 && cue.data_track >= 0;
+}
+
+static int chd_prepare_handle(chd_file **handle,
+                              unsigned char **hunk_buffer,
+                              int *cached_hunk)
+{
+  const chd_header *header;
+
+  if (chd_open(cue.chd_path, CHD_OPEN_READ, NULL, handle) != CHDERR_NONE)
+    return 0;
+
+  header = chd_get_header(*handle);
+  if (!header || header->hunkbytes == 0 ||
+      (header->hunkbytes % CD_FRAME_SIZE) != 0)
+  {
+    chd_close(*handle);
+    *handle = NULL;
+    return 0;
+  }
+
+  if (cue.chd_hunkbytes == 0)
+  {
+    cue.chd_hunkbytes = header->hunkbytes;
+    cue.chd_frames_per_hunk = header->hunkbytes / CD_FRAME_SIZE;
+  }
+  else if (cue.chd_hunkbytes != header->hunkbytes)
+  {
+    chd_close(*handle);
+    *handle = NULL;
+    return 0;
+  }
+
+  *hunk_buffer = (unsigned char *)malloc(header->hunkbytes);
+  if (!*hunk_buffer)
+  {
+    chd_close(*handle);
+    *handle = NULL;
+    return 0;
+  }
+
+  *cached_hunk = -1;
+  return 1;
+}
+
+static void chd_release_handle(chd_file **handle,
+                               unsigned char **hunk_buffer,
+                               int *cached_hunk)
+{
+  if (*handle)
+    chd_close(*handle);
+  *handle = NULL;
+
+  if (*hunk_buffer)
+    free(*hunk_buffer);
+  *hunk_buffer = NULL;
+  *cached_hunk = -1;
+}
+
+static int chd_read_frame_part(chd_file *handle,
+                               unsigned char *hunk_buffer,
+                               int *cached_hunk,
+                               unsigned int frame,
+                               unsigned int frame_offset,
+                               unsigned char *out,
+                               unsigned int bytes)
+{
+  unsigned int hunk;
+  unsigned int frame_in_hunk;
+  unsigned int hunk_offset;
+
+  if (!handle || !hunk_buffer || cue.chd_frames_per_hunk == 0)
+    return 0;
+  if (frame_offset + bytes > AUDIO_SECTOR_SIZE)
+    return 0;
+
+  hunk = frame / cue.chd_frames_per_hunk;
+  frame_in_hunk = frame % cue.chd_frames_per_hunk;
+
+  if (*cached_hunk != (int)hunk)
+  {
+    if (chd_read(handle, hunk, hunk_buffer) != CHDERR_NONE)
+      return 0;
+    *cached_hunk = (int)hunk;
+  }
+
+  hunk_offset = frame_in_hunk * CD_FRAME_SIZE + frame_offset;
+  memcpy(out, hunk_buffer + hunk_offset, bytes);
+  return 1;
+}
+
+static int chd_mount_image(const char *path)
+{
+  strncpy(cue.chd_path, path, sizeof(cue.chd_path) - 1);
+  cue.chd_path[sizeof(cue.chd_path) - 1] = 0;
+  cue.image_is_chd = 1;
+
+  if (!chd_prepare_handle(&cue.chd_data, &cue.chd_data_hunk,
+                          &cue.chd_data_cached_hunk))
+    return 0;
+
+  if (!chd_parse_tracks(cue.chd_data))
+    return 0;
+
+  return 1;
+}
+
 static int data_payload_offset(int type)
 {
   if (type == CUE_TRACK_MODE1_2352)
@@ -478,11 +754,23 @@ static int cue_read_data_sector(unsigned int lba, unsigned char *out)
   long offset;
   int payload;
 
-  if (!cue.mounted || cue.data_track < 0 || !cue.data_fp)
+  if (!cue.mounted || cue.data_track < 0)
     return 0;
 
   t = &cue.tracks[cue.data_track];
   payload = data_payload_offset(t->type);
+
+  if (cue.image_is_chd)
+  {
+    unsigned int frame = t->chd_frame + lba;
+    return chd_read_frame_part(cue.chd_data, cue.chd_data_hunk,
+                               &cue.chd_data_cached_hunk,
+                               frame, (unsigned int)payload,
+                               out, ISO_SECTOR_SIZE);
+  }
+
+  if (!cue.data_fp)
+    return 0;
 
   offset = (long)t->index01 * t->sector_size;
   offset += (long)lba * t->sector_size;
@@ -734,19 +1022,6 @@ void cue_vfcloseall(void)
 
 void cue_audio_stop(void)
 {
-  /* Preserve a completed/current session for the selector diagnostic line. */
-  if (cue.audio_track > 0 || cue.audio_have_samples)
-  {
-    last_audio_underruns = cue.audio_underruns;
-    last_audio_ring_min_count = cue.audio_ring_min_count;
-    last_audio_retry_events = cue.audio_retry_events;
-    last_audio_retry_attempts = cue.audio_retry_attempts;
-    last_audio_retry_recovered = cue.audio_retry_recovered;
-    last_audio_retry_failed = cue.audio_retry_failed;
-    last_audio_hold_callbacks = cue.audio_hold_callbacks;
-    last_audio_diag_valid = 1;
-  }
-
   /* Stop the producer before touching its FILE or shared ring buffer. */
   if (cue.audio_thread_created)
   {
@@ -759,6 +1034,8 @@ void cue_audio_stop(void)
     fclose(cue.audio_fp);
 
   cue.audio_fp = NULL;
+  chd_release_handle(&cue.chd_audio, &cue.chd_audio_hunk,
+                     &cue.chd_audio_cached_hunk);
 
   if (cue.audio_mutex_ready)
   {
@@ -790,6 +1067,8 @@ void cue_unmount(void)
     fclose(cue.data_fp);
 
   cue.data_fp = NULL;
+  chd_release_handle(&cue.chd_data, &cue.chd_data_hunk,
+                     &cue.chd_data_cached_hunk);
   cue_vfcloseall();
   memset(&cue, 0, sizeof(cue));
   cue.data_track = -1;
@@ -797,38 +1076,53 @@ void cue_unmount(void)
 
 int cue_mount_directory(const char *directory)
 {
-  char cuepath[CUE_PATH_MAX];
+  char imagepath[CUE_PATH_MAX];
   unsigned char pvd[ISO_SECTOR_SIZE];
   CUETRACK *data;
   int fi;
+  int have_cue;
 
   cue_unmount();
-
-  if (!cue_find_file_in_directory(directory, cuepath, sizeof(cuepath)))
-    return 0;
 
   strncpy(cue.base_dir, directory, sizeof(cue.base_dir) - 1);
   cue.base_dir[sizeof(cue.base_dir) - 1] = 0;
   normalize_slashes(cue.base_dir);
   strip_trailing_slash(cue.base_dir);
 
-  strncpy(cue.cue_path, cuepath, sizeof(cue.cue_path) - 1);
-  cue.cue_path[sizeof(cue.cue_path) - 1] = 0;
+  /* Preserve legacy priority: if a directory contains a CUE, use it. */
+  have_cue = cue_find_file_in_directory(directory, imagepath, sizeof(imagepath));
 
-  if (!cue_parse(cuepath))
+  if (have_cue)
   {
-    cue_unmount();
-    return 0;
+    strncpy(cue.cue_path, imagepath, sizeof(cue.cue_path) - 1);
+    cue.cue_path[sizeof(cue.cue_path) - 1] = 0;
+
+    if (!cue_parse(imagepath))
+    {
+      cue_unmount();
+      return 0;
+    }
+
+    data = &cue.tracks[cue.data_track];
+    fi = data->file_index;
+
+    cue.data_fp = fopen(cue.files[fi].path, "rb");
+    if (!cue.data_fp)
+    {
+      cue_unmount();
+      return 0;
+    }
   }
-
-  data = &cue.tracks[cue.data_track];
-  fi = data->file_index;
-
-  cue.data_fp = fopen(cue.files[fi].path, "rb");
-  if (!cue.data_fp)
+  else
   {
-    cue_unmount();
-    return 0;
+    if (!chd_find_file_in_directory(directory, imagepath, sizeof(imagepath)))
+      return 0;
+
+    if (!chd_mount_image(imagepath))
+    {
+      cue_unmount();
+      return 0;
+    }
   }
 
   cue.mounted = 1;
@@ -980,6 +1274,142 @@ int cue_vfclose(u32 fp)
   return 1;
 }
 
+
+/****************************************************************************
+* Disc TOC helpers
+****************************************************************************/
+static int cue_file_sector_size(int file_index)
+{
+  int i;
+
+  for (i = 0; i < cue.track_count; i++)
+  {
+    if (cue.tracks[i].file_index == file_index)
+      return cue.tracks[i].sector_size ? cue.tracks[i].sector_size : 2352;
+  }
+
+  return 2352;
+}
+
+static unsigned int cue_file_base_lba(int file_index)
+{
+  unsigned int base = 0;
+  int i;
+
+  for (i = 0; i < file_index && i < cue.file_count; i++)
+  {
+    int ssize = cue_file_sector_size(i);
+    if (ssize <= 0)
+      ssize = 2352;
+
+    base += (unsigned int)(cue.files[i].size / ssize);
+  }
+
+  return base;
+}
+
+int cue_disc_first_track(void)
+{
+  if (!cue.mounted || cue.track_count <= 0)
+    return 0;
+
+  return cue.tracks[0].number;
+}
+
+int cue_disc_last_track(void)
+{
+  if (!cue.mounted || cue.track_count <= 0)
+    return 0;
+
+  return cue.tracks[cue.track_count - 1].number;
+}
+
+int cue_disc_track_is_data(int track)
+{
+  int i;
+
+  if (!cue.mounted)
+    return 0;
+
+  for (i = 0; i < cue.track_count; i++)
+  {
+    if (cue.tracks[i].number == track)
+      return cue.tracks[i].type != CUE_TRACK_AUDIO;
+  }
+
+  return 0;
+}
+
+unsigned int cue_disc_track_lba(int track)
+{
+  int i;
+
+  if (!cue.mounted)
+    return 0;
+
+  for (i = 0; i < cue.track_count; i++)
+  {
+    if (cue.tracks[i].number == track)
+    {
+      if (cue.image_is_chd)
+        return cue.tracks[i].disc_lba;
+
+      {
+        unsigned int base = cue_file_base_lba(cue.tracks[i].file_index);
+        unsigned int pos = cue.tracks[i].index01 > 0 ?
+                           (unsigned int)cue.tracks[i].index01 : 0;
+        return base + pos;
+      }
+    }
+  }
+
+  return 0;
+}
+
+unsigned int cue_disc_leadout_lba(void)
+{
+  unsigned int base = 0;
+  int i;
+
+  if (!cue.mounted)
+    return 0;
+
+  if (cue.image_is_chd)
+    return cue.chd_leadout;
+
+  for (i = 0; i < cue.file_count; i++)
+  {
+    int ssize = cue_file_sector_size(i);
+    if (ssize <= 0)
+      ssize = 2352;
+
+    base += (unsigned int)(cue.files[i].size / ssize);
+  }
+
+  return base;
+}
+
+int cue_disc_track_from_lba(unsigned int lba)
+{
+  int i;
+  int found = cue_disc_first_track();
+
+  if (!cue.mounted)
+    return 0;
+
+  for (i = 0; i < cue.track_count; i++)
+  {
+    unsigned int start = cue_disc_track_lba(cue.tracks[i].number);
+
+    if (start > lba)
+      break;
+
+    found = cue.tracks[i].number;
+  }
+
+  return found;
+}
+
 int cue_audio_first_track(void)
 {
   int i;
@@ -1065,13 +1495,22 @@ static int find_track_index(int number)
 static long track_start_byte(int ti)
 {
   CUETRACK *t = &cue.tracks[ti];
+
+  if (cue.image_is_chd)
+    return (long)t->chd_frame * AUDIO_SECTOR_SIZE;
+
   return (long)t->index01 * t->sector_size;
 }
 
 static long track_end_byte(int ti)
 {
   CUETRACK *t = &cue.tracks[ti];
-  long end = cue.files[t->file_index].size;
+  long end;
+
+  if (cue.image_is_chd)
+    return ((long)t->chd_frame + (long)t->chd_frames) * AUDIO_SECTOR_SIZE;
+
+  end = cue.files[t->file_index].size;
 
   if (ti + 1 < cue.track_count &&
       cue.tracks[ti + 1].file_index == t->file_index)
@@ -1159,10 +1598,6 @@ static unsigned int audio_ring_read_bytes(unsigned char *dst,
   cue.audio_ring_read = (cue.audio_ring_read + bytes) % AUDIO_RING_SIZE;
   cue.audio_ring_count -= bytes;
 
-  /* Ignore the normal drain after the producer has reached true track EOF. */
-  if (!cue.audio_source_eof && cue.audio_ring_count < cue.audio_ring_min_count)
-    cue.audio_ring_min_count = cue.audio_ring_count;
-
   LWP_MutexUnlock(cue.audio_mutex);
   return bytes;
 }
@@ -1186,6 +1621,54 @@ static unsigned int audio_ring_free(void)
  * in cue_audio_render_48k().  Once playback begins, all file I/O is done by
  * audio_reader_thread().
  */
+static int audio_source_ready(void)
+{
+  if (cue.image_is_chd)
+    return cue.chd_audio != NULL;
+  return cue.audio_fp != NULL;
+}
+
+static size_t audio_source_read(unsigned char *dst, unsigned int bytes)
+{
+  unsigned int done = 0;
+
+  if (!cue.image_is_chd)
+    return fread(dst, 1, bytes, cue.audio_fp);
+
+  while (done < bytes)
+  {
+    unsigned long logical = (unsigned long)cue.audio_pos + done;
+    unsigned int frame = (unsigned int)(logical / AUDIO_SECTOR_SIZE);
+    unsigned int off = (unsigned int)(logical % AUDIO_SECTOR_SIZE);
+    unsigned int part = AUDIO_SECTOR_SIZE - off;
+    unsigned int i;
+
+    if (part > bytes - done)
+      part = bytes - done;
+
+    if (!chd_read_frame_part(cue.chd_audio, cue.chd_audio_hunk,
+                             &cue.chd_audio_cached_hunk,
+                             frame, off, dst + done, part))
+      break;
+
+    /*
+     * CHD CDDA sectors are stored as big-endian 16-bit samples. The existing
+     * stable CUE/BIN consumer explicitly decodes little-endian PCM bytes, so
+     * normalize only the CHD source here and leave the consumer untouched.
+     */
+    for (i = 0; i + 1 < part; i += 2)
+    {
+      unsigned char tmp = dst[done + i];
+      dst[done + i] = dst[done + i + 1];
+      dst[done + i + 1] = tmp;
+    }
+
+    done += part;
+  }
+
+  return done;
+}
+
 static int audio_initial_preload(void)
 {
   unsigned int total = 0;
@@ -1204,7 +1687,7 @@ static int audio_initial_preload(void)
     if (want == 0)
       break;
 
-    got = fread(cue.audio_thread_buffer, 1, want, cue.audio_fp);
+    got = audio_source_read(cue.audio_thread_buffer, want);
     if (got == 0)
       break;
 
@@ -1233,7 +1716,7 @@ static void *audio_reader_thread(void *arg)
     long remain;
     size_t got;
 
-    if (!cue.audio_fp)
+    if (!audio_source_ready())
       break;
 
     remain = cue.audio_end - cue.audio_pos;
@@ -1256,7 +1739,7 @@ static void *audio_reader_thread(void *arg)
     if ((long)want > remain)
       want = (unsigned int)remain;
 
-    got = fread(cue.audio_thread_buffer, 1, want, cue.audio_fp);
+    got = audio_source_read(cue.audio_thread_buffer, want);
     if (got == 0)
     {
       cue.audio_source_eof = 1;
@@ -1284,43 +1767,16 @@ static void *audio_reader_thread(void *arg)
 static int audio_refill_consumer(void)
 {
   unsigned int got;
-  int retry;
-
-  got = audio_ring_read_bytes(cue.audio_consume, AUDIO_CONSUME_CACHE);
-
-  if (got == 0 && !cue.audio_source_eof)
-    cue.audio_retry_events++;
 
   /*
-   * A producer fread() can finish just after the consumer observes an empty
-   * ring.  The old code immediately converted that sub-millisecond starvation
-   * into a hold for the remainder of the whole 800-frame mixer callback.
-   *
-   * Retry only on a real temporary starvation and keep the wait strictly
-   * bounded. usleep() yields the Broadway CPU, allowing the LWP producer to
-   * finish its pending I/O. Normal playback never enters this loop.
+   * Historical stable consumer:
+   * read only data that is already present in the RAM ring and return
+   * immediately.  Never sleep/yield in the real-time consumer path.
    */
-  for (retry = 0;
-       got == 0 && !cue.audio_source_eof && retry < AUDIO_REFILL_RETRIES;
-       retry++)
-  {
-    cue.audio_retry_attempts++;
-    usleep(AUDIO_REFILL_RETRY_US);
-    got = audio_ring_read_bytes(cue.audio_consume, AUDIO_CONSUME_CACHE);
-  }
-
-  if (retry > 0 && got > 0)
-    cue.audio_retry_recovered++;
+  got = audio_ring_read_bytes(cue.audio_consume, AUDIO_CONSUME_CACHE);
 
   cue.audio_consume_pos = 0;
   cue.audio_consume_len = (int)got;
-
-  /* One diagnostic event only after all bounded recovery attempts failed. */
-  if (got == 0 && !cue.audio_source_eof)
-  {
-    cue.audio_retry_failed++;
-    cue.audio_underruns++;
-  }
 
   return got > 0;
 }
@@ -1377,14 +1833,29 @@ int cue_audio_start(int track)
   if (t->type != CUE_TRACK_AUDIO)
     return 0;
 
-  cue.audio_fp = fopen(cue.files[t->file_index].path, "rb");
-  if (!cue.audio_fp)
-    return 0;
-
   start = track_start_byte(ti);
   end = track_end_byte(ti);
 
-  if (end <= start || fseek(cue.audio_fp, start, SEEK_SET) != 0)
+  if (cue.image_is_chd)
+  {
+    if (!chd_prepare_handle(&cue.chd_audio, &cue.chd_audio_hunk,
+                            &cue.chd_audio_cached_hunk))
+      return 0;
+  }
+  else
+  {
+    cue.audio_fp = fopen(cue.files[t->file_index].path, "rb");
+    if (!cue.audio_fp)
+      return 0;
+
+    if (fseek(cue.audio_fp, start, SEEK_SET) != 0)
+    {
+      cue_audio_stop();
+      return 0;
+    }
+  }
+
+  if (end <= start)
   {
     cue_audio_stop();
     return 0;
@@ -1397,13 +1868,6 @@ int cue_audio_start(int track)
   cue.audio_ring_read = 0;
   cue.audio_ring_write = 0;
   cue.audio_ring_count = 0;
-  cue.audio_underruns = 0;
-  cue.audio_ring_min_count = AUDIO_RING_SIZE;
-  cue.audio_retry_events = 0;
-  cue.audio_retry_attempts = 0;
-  cue.audio_retry_recovered = 0;
-  cue.audio_retry_failed = 0;
-  cue.audio_hold_callbacks = 0;
   cue.audio_consume_pos = 0;
   cue.audio_consume_len = 0;
   cue.audio_thread_quit = 0;
@@ -1426,7 +1890,6 @@ int cue_audio_start(int track)
   }
 
   /* Baseline for the minimum-buffer diagnostic after the initial reserve. */
-  cue.audio_ring_min_count = cue.audio_ring_count;
 
   if (!audio_get_frame(&cue.audio_l0, &cue.audio_r0) ||
       !audio_get_frame(&cue.audio_l1, &cue.audio_r1))
@@ -1464,7 +1927,7 @@ int cue_audio_render_48k(char *outbuffer, int frames)
   short *out = (short *)outbuffer;
   int i;
 
-  if (!cue.audio_fp || !cue.audio_have_samples || cue.audio_eof)
+  if (!audio_source_ready() || !cue.audio_have_samples || cue.audio_eof)
   {
     memset(outbuffer, 0, frames * 4);
     return 0;
@@ -1498,7 +1961,6 @@ int cue_audio_render_48k(char *outbuffer, int frames)
         if (!cue.audio_source_eof)
         {
           int j;
-          cue.audio_hold_callbacks++;
           for (j = i + 1; j < frames; j++)
           {
             *out++ = (short)cue.audio_l0;
@@ -1519,70 +1981,6 @@ int cue_audio_render_48k(char *outbuffer, int frames)
   }
 
   return frames;
-}
-
-unsigned int cue_audio_debug_underruns(void)
-{
-  return cue.audio_underruns;
-}
-
-unsigned int cue_audio_debug_min_ring_bytes(void)
-{
-  return cue.audio_ring_min_count;
-}
-
-unsigned int cue_audio_debug_ring_bytes(void)
-{
-  unsigned int count = 0;
-
-  if (!cue.audio_mutex_ready)
-    return 0;
-
-  LWP_MutexLock(cue.audio_mutex);
-  count = cue.audio_ring_count;
-  LWP_MutexUnlock(cue.audio_mutex);
-
-  return count;
-}
-
-unsigned int cue_audio_debug_last_underruns(void)
-{
-  return last_audio_underruns;
-}
-
-unsigned int cue_audio_debug_last_min_ring_bytes(void)
-{
-  return last_audio_ring_min_count;
-}
-
-unsigned int cue_audio_debug_last_retry_events(void)
-{
-  return last_audio_retry_events;
-}
-
-unsigned int cue_audio_debug_last_retry_attempts(void)
-{
-  return last_audio_retry_attempts;
-}
-
-unsigned int cue_audio_debug_last_retry_recovered(void)
-{
-  return last_audio_retry_recovered;
-}
-
-unsigned int cue_audio_debug_last_retry_failed(void)
-{
-  return last_audio_retry_failed;
-}
-
-unsigned int cue_audio_debug_last_hold_callbacks(void)
-{
-  return last_audio_hold_callbacks;
-}
-
-int cue_audio_debug_last_valid(void)
-{
-  return last_audio_diag_valid;
 }
 
 int cue_audio_ended(void)

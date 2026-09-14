@@ -1695,64 +1695,49 @@ static int decode_tableA1[16] = {
     -1 * 16, -1 * 16, -1 * 16, -1 * 16, 2 * 16, 5 * 16, 7 * 16, 9 * 16
 };
 
-/* 0.9 , 0.9 , 0.9 , 0.9 , 1.2 , 1.6 , 2.0 , 2.4 */
-/* 8 = -1 , 2 5 8 11 */
-/* 9 = -1 , 2 5 9 13 */
-/* 10= -1 , 2 6 10 14 */
-/* 12= -1 , 2 7 12 17 */
-/* 20= -2 , 4 12 20 32 */
+/*
+ * Neo.CD Respin - proven ADPCM-A correction.
+ *
+ * This is the exact core behavior from the build after which the final SFX
+ * flick disappeared in testing:
+ *
+ *   1) exact 49-entry ADPCM-A step table;
+ *   2) 12-bit wrapping accumulator, in the RX historical x3 scale;
+ *   3) inclusive EOS checked at a new-byte boundary;
+ *   4) YM2610 low-20-bit end-address comparison.
+ *
+ * Everything outside this ADPCM-A block remains Niuus/RX original.
+ */
+static const int adpcma_steps[49] = {
+    16, 17, 19, 21, 23, 25, 28,
+    31, 34, 37, 41, 45, 50, 55,
+    60, 66, 73, 80, 88, 97, 107,
+    118, 130, 143, 157, 173, 190, 209,
+    230, 253, 279, 307, 337, 371, 408,
+    449, 494, 544, 598, 658, 724, 796,
+    876, 963, 1060, 1166, 1282, 1411, 1552
+};
 
-#if 1
 static void InitOPNB_ADPCMATable(void)
 {
     int step, nib;
 
     for (step = 0; step <= 48; step++) {
-	double stepval =
-	    floor(16.0 * pow(11.0 / 10.0, (double) step) *
-		  ADPCMA_MIXING_LEVEL);
-	/* loop over all nibbles and compute the difference */
-	for (nib = 0; nib < 16; nib++) {
-	    int value = (int) stepval * ((nib & 0x07) * 2 + 1) / 8;
-	    jedi_table[step * 16 + nib] = (nib & 0x08) ? -value : value;
-	}
-    }
-}
-#else
-static int decode_tableA2[49] = {
-    0x0010, 0x0011, 0x0013, 0x0015, 0x0017, 0x0019, 0x001c, 0x001f,
-    0x0022, 0x0025, 0x0029, 0x002d, 0x0032, 0x0037, 0x003c, 0x0042,
-    0x0049, 0x0050, 0x0058, 0x0061, 0x006b, 0x0076, 0x0082, 0x008f,
-    0x009d, 0x00ad, 0x00be, 0x00d1, 0x00e6, 0x00fd, 0x0117, 0x0133,
-    0x0151, 0x0173, 0x0198, 0x01c1, 0x01ee, 0x0220, 0x0256, 0x0292,
-    0x02d4, 0x031c, 0x036c, 0x03c3, 0x0424, 0x048e, 0x0502, 0x0583,
-    0x0610
-};
-static void InitOPNB_ADPCMATable(void)
-{
-    int ta, tb, tc;
-    for (ta = 0; ta < 49; ta++) {
-	for (tb = 0; tb < 16; tb++) {
-	    tc = 0;
-	    if (tb & 0x04) {
-		tc += ((decode_tableA2[ta] * ADPCMA_MIXING_LEVEL));
-	    }
-	    if (tb & 0x02) {
-		tc += ((decode_tableA2[ta] * ADPCMA_MIXING_LEVEL) >> 1);
-	    }
-	    if (tb & 0x01) {
-		tc += ((decode_tableA2[ta] * ADPCMA_MIXING_LEVEL) >> 2);
-	    }
-	    tc += ((decode_tableA2[ta] * ADPCMA_MIXING_LEVEL) >> 3);
-	    if (tb & 0x08) {
-		tc = (0 - tc);
-	    }
-	    jedi_table[ta * 16 + tb] = tc;
-	}
-    }
-}
-#endif
+        for (nib = 0; nib < 16; nib++) {
+            int value = ((2 * (nib & 0x07) + 1) * adpcma_steps[step]) / 8;
 
+            value *= ADPCMA_MIXING_LEVEL;
+            jedi_table[step * 16 + nib] =
+                (nib & 0x08) ? -value : value;
+        }
+    }
+}
+
+/*
+ * YM2610 ADPCM-A uses a signed 12-bit wrapping accumulator.
+ * RX keeps ADPCM-A internally scaled by ADPCMA_MIXING_LEVEL, so the wrap
+ * is performed in the same scaled domain to preserve the established level.
+ */
 /**** ADPCM A (Non control type) ****/
 inline void OPNB_ADPCM_CALC_CHA(YM2610 * F2610, ADPCM_CH * ch)
 {
@@ -1760,42 +1745,76 @@ inline void OPNB_ADPCM_CALC_CHA(YM2610 * F2610, ADPCM_CH * ch)
     int data;
 
     ch->now_step += ch->step;
-    if (ch->now_step >= (1 << ADPCM_SHIFT)) {
-	step = ch->now_step >> ADPCM_SHIFT;
-	ch->now_step &= (1 << ADPCM_SHIFT) - 1;
-	/* end check */
-	if ((ch->now_addr + step) > (ch->end << 1)) {
-	    ch->flag = 0;
-	    F2610->adpcm_arrivedEndAddress |= ch->flagMask;
-	    return;
-	}
-	do {
-#if 0
-	    if (ch->now_addr > (pcmsizeA << 1)) {
-		//LOG(LOG_WAR,("YM2610: Attempting to play past adpcm rom size!\n" ));
-		return;
-	    }
-#endif
-	    if (ch->now_addr & 1)
-		data = ch->now_data & 0x0f;
-	    else {
-		ch->now_data = *(pcmbufA + (ch->now_addr >> 1));
-		data = (ch->now_data >> 4) & 0x0f;
-	    }
-	    ch->now_addr++;
 
-	    ch->adpcmx += jedi_table[ch->adpcmd + data];
-	    Limit(ch->adpcmx, ADPCMA_DECODE_MAX, ADPCMA_DECODE_MIN);
-	    ch->adpcmd += decode_tableA1[data];
-	    Limit(ch->adpcmd, 48 * 16, 0 * 16);
-			/**** calc pcm * volume data ****/
-	    ch->adpcml = ch->adpcmx * ch->volume;
-	}
-	while (--step);
+    if (ch->now_step >= (1 << ADPCM_SHIFT))
+    {
+        step = ch->now_step >> ADPCM_SHIFT;
+        ch->now_step &= (1 << ADPCM_SHIFT) - 1;
+
+        do
+        {
+            /*
+             * The programmed ADPCM-A end byte is inclusive.
+             * Test only when about to fetch a new byte, after both nibbles
+             * of the final byte have already been decoded.
+             *
+             * YM2610 uses the low 20 address bits for this comparison.
+             */
+            if ((ch->now_addr & 1) == 0)
+            {
+                Uint32 current_byte = ch->now_addr >> 1;
+                Uint32 end_plus_one = ch->end + 1;
+
+                if (((current_byte ^ end_plus_one) & 0x000fffff) == 0)
+                {
+                    ch->flag = 0;
+                    ch->adpcmx = 0;
+                    ch->adpcml = 0;
+                    F2610->adpcm_arrivedEndAddress |= ch->flagMask;
+                    return;
+                }
+            }
+
+#if 0
+            if (ch->now_addr > (pcmsizeA << 1)) {
+                //LOG(LOG_WAR,("YM2610: Attempting to play past adpcm rom size!\n" ));
+                return;
+            }
+#endif
+
+            if (ch->now_addr & 1)
+                data = ch->now_data & 0x0f;
+            else
+            {
+                ch->now_data = *(pcmbufA + (ch->now_addr >> 1));
+                data = (ch->now_data >> 4) & 0x0f;
+            }
+
+            ch->now_addr++;
+
+            ch->adpcmx += jedi_table[ch->adpcmd + data];
+
+            /*
+             * Keep the proven EOS/step-table fix, but restore the original
+             * NeoCD RX saturating accumulator.  The 12-bit wrap changed the
+             * waveform throughout the sample and is the strongest candidate
+             * for the newly harsh/strident endings.
+             */
+            Limit(ch->adpcmx, ADPCMA_DECODE_MAX, ADPCMA_DECODE_MIN);
+
+            ch->adpcmd += decode_tableA1[data];
+            Limit(ch->adpcmd, 48 * 16, 0 * 16);
+
+            /* RX original volume law remains unchanged. */
+            ch->adpcml = ch->adpcmx * ch->volume;
+        }
+        while (--step);
     }
-    /* output for work of output channels (out_ch[OPNxxxx]) */
+
+    /* RX original pan/output path remains unchanged. */
     *(ch->pan) += ch->adpcml;
 }
+
 
 /* ADPCM type A */
 static void FM_ADPCMAWrite(YM2610 * F2610, int r, int v)

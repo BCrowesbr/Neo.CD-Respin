@@ -118,6 +118,17 @@ int ophw = 0;
 int cur_mrhard = 0;
 static int restart = 0;
 
+/* Native BIOS/CD Player mode restored for Neo.CD Respin 1.2. */
+#define LAUNCH_BIOS_CDPLAYER 42
+static int bios_player_mode = 0;
+
+static unsigned short bios_cdplayer_0120;
+static unsigned short bios_cdplayer_055e;
+static unsigned short bios_cdplayer_0560;
+
+static void neogeo_cdplayer_patch_enable(void);
+static void neogeo_cdplayer_patch_disable(void);
+
 /****************************************************************************
 * Frameticker
 ****************************************************************************/
@@ -153,6 +164,44 @@ static void neogeo_free_memory(void)
 {
 	if ( neogeo_all_memory == NULL )
 		free(neogeo_all_memory);
+}
+
+/****************************************************************************
+* Native BIOS/CD Player patch control
+****************************************************************************/
+static void neogeo_cdplayer_patch_enable(void)
+{
+    *(unsigned short *)(neogeo_rom_memory + 0x0120) = 0x055E;
+    *(unsigned short *)(neogeo_rom_memory + 0x055E) = 0xFAC4;
+    *(unsigned short *)(neogeo_rom_memory + 0x0560) = 0x4E75;
+}
+
+static void neogeo_cdplayer_patch_disable(void)
+{
+    *(unsigned short *)(neogeo_rom_memory + 0x0120) = bios_cdplayer_0120;
+    *(unsigned short *)(neogeo_rom_memory + 0x055E) = bios_cdplayer_055e;
+    *(unsigned short *)(neogeo_rom_memory + 0x0560) = bios_cdplayer_0560;
+}
+
+int neogeo_bios_player_active(void)
+{
+    return bios_player_mode;
+}
+
+void neogeo_enter_bios_cdplayer(void)
+{
+    if (bios_player_mode)
+        return;
+
+    /*
+     * Enter the original BIOS from the running game without touching the
+     * mounted CUE/BIN or the stable threaded CDDA backend.
+     */
+    cdda_stop();
+
+    bios_player_mode = 1;
+    neogeo_cdplayer_patch_disable();
+    restart = 1;
 }
 
 /****************************************************************************
@@ -322,8 +371,17 @@ int main(void)
 	//  Swap the Sprite data - required for BE bios
 	neogeo_swab(neogeo_rom_memory + 0x50000, neogeo_rom_memory + 0x50000, 0x20000);
 
+	/*
+	 * Save the original BIOS CD Player words before NeoCDRX patches them.
+	 * Only these three words are restored for native BIOS/CD Player mode.
+	 */
+	bios_cdplayer_0120 = *(unsigned short *)(neogeo_rom_memory + 0x0120);
+	bios_cdplayer_055e = *(unsigned short *)(neogeo_rom_memory + 0x055E);
+	bios_cdplayer_0560 = *(unsigned short *)(neogeo_rom_memory + 0x0560);
+
 	//  Patch ROM
 	neogeo_patch_rom();
+	neogeo_cdplayer_patch_enable();
 
 	//  Initialise local video
 	video_init();
@@ -411,6 +469,17 @@ static void neogeo_run(void)
 		/*** Decode MP3 ***/
 			mp3_decoder(3200, (char*)mp3buffer);
 
+		/*
+		 * Historical NeoCDRX order:
+		 * feed the audio mixer BEFORE waiting for the next VBL.
+		 *
+		 * Keeping update_audio() after the VBL wait makes the producer side of
+		 * the final audio ring sensitive to random video/main-loop latency.
+		 * The original stable loop queued audio first, then waited for VBL.
+		 */
+		/*** Update Audio ***/
+		update_audio();
+
 		/*** Allow for 5 frames, user menus etc ***/
 		if (FrameTicker > 5)
 		FrameTicker = 1;
@@ -419,9 +488,6 @@ static void neogeo_run(void)
 		usleep(50);
 
 		FrameTicker--;
-
-		/*** Update Audio - synchronized immediately after VBL ***/
-		update_audio();
 
 		/*** Update video ***/
 		video_draw_screen1();
@@ -689,14 +755,32 @@ void neogeo_exit_cdplayer(void)
 ****************************************************************************/
 void neogeo_new_game(void)
 {
+	int menu_result;
+
 	/*** Prevent scratching noises in menu ***/
 	AUDIO_StopDMA();
-	if (!load_mainmenu() /* !load_options() */)
+	menu_result = load_mainmenu();
+
+	/*** Return to the currently running game ***/
+	if (menu_result == 0)
 	{
-	ResumeGX();
-	AUDIO_StartDMA();
-	return;
+		ResumeGX();
+		AUDIO_StartDMA();
+		return;
 	}
+
+	/*** Enter the original BIOS/CD Player with the mounted disc intact. ***/
+	if (menu_result == LAUNCH_BIOS_CDPLAYER)
+	{
+		neogeo_enter_bios_cdplayer();
+		ResumeGX();
+		AUDIO_StartDMA();
+		return;
+	}
+
+	/*** Normal game loading returns to the legacy patched path. ***/
+	bios_player_mode = 0;
+	neogeo_cdplayer_patch_enable();
 
 	GEN_fcloseall();
 
@@ -737,7 +821,7 @@ static void neogeo_run_bios(void)
 {
 	static int z80_inited = 0;
 
-	accept_input = 0;
+	accept_input = bios_player_mode ? 1 : 0;
 
 	/*** Set region ***/
 	m68k_write_memory_8(0x10FD83, neogeo_region);
@@ -781,6 +865,8 @@ void neogeo_ipl_end(void)
 	neogeo_configure_game(config_game_name);
 
 	ipl_in_progress = fix_disable = spr_disable = 0;
+	bios_player_mode = 0;
+	neogeo_cdplayer_patch_enable();
 	accept_input = cpu_enabled = 1;
 }
 

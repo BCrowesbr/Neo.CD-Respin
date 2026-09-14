@@ -33,13 +33,26 @@ IMPORTANT: Everything in this fork was designed with Wii users playing on CRTs t
 All features inherited from the original emulator are the work of NiuuS and the previous developers. The improvements I implemented in Neo.CD Respin are:
 
 ● Native 240p output and selectable video modes;  
-● CUE/BIN and CDDA support;  
+● CUE/BIN/CDDA and CHD format support;  
 ● CD player integrated into the emulator;  
-● Customizable control mapping;  
-● Wii Classic Controller support;  
+● Customizable controller mapping;  
+● Wii Classic Controller support; USB/XInput Controller partial support;
+● 2-player support;
 ● Always Open Source!
 
 ::::::: CHANGELOG ::::::::::::::::::::::::::::::::::::::::::
+
+[1.2.1 - September 14, 2026]
+
+● Added CHD image support, including CDDA playback based on libchdr, developed by Romain Tisserand (rtissera) and the MAME Team;
+● Added 2-player support;
+● Added USB XInput controller support and Controller Mapping.
+● Significantly improved audio stability, fixing music stuttering, pops and crackling.
+● Improved CDDA playback and buffering.
+● Minor GUI improvements and fixes.
+● Various stability improvements and internal fixes.
+**Note:** XInput and Player 2 support still require further testing with different controller models.
+
 
 [1.0 - September 12, 2026]
 
@@ -103,12 +116,20 @@ tracks, or adjust the Low / Mid / High frequency bands separately.
 • "Controller Mapping" allows you to remap commands for any supported controller or restore the default mapping.
 
 
-::::::: CUE/BIN SUPPORT ::::::::::::::::::::::::::::::::::::::::::
+::::::: CUE/BIN/CHD SUPPORT ::::::::::::::::::::::::::::::::::::::::::
 
-Neo.CD Respin supports CUE/BIN disc images. Games must be uncompressed and placed in the "\NeoCDRE\games"  folder on the SD card or USB device.
-The .cue file and all corresponding .bin files must be kept together in the same game folder.
-Unlike the original NeoCD-RX setup, which used extracted game files and converted MP3 tracks, Neo.CD Respin plays the CD audio tracks (CDDA) directly from the CUE/BIN image, 
-preserving the original disc audio structure.
+Neo.CD Respin supports CUE/BIN disc images and compressed CHD files. Each game must be placed in its own individual folder inside the "\NeoCDRE\games" directory on the SD card or 
+USB device. For CUE/BIN games, the .cue file and all corresponding .bin files must be kept together in the same game folder. CHD games must also be placed in individual game folders. 
+Each game is stored as a single .chd file.
+
+Example:
+\NeoCDRE\games\Metal Slug 2\Metal Slug 2.chd
+
+or
+
+\NeoCDRE\games\Metal Slug 2\Metal Slug 2.cue
+\NeoCDRE\games\Metal Slug 2\Track01.bin
+\NeoCDRE\games\Metal Slug 2\Track02.bin
 
 
 ::::::: SUPPORTED CONTROLLERS ::::::::::::::::::::::::::::::::::::::::::
@@ -119,6 +140,14 @@ Neo.CD Respin currently supports the following:
  • Wii Remote+Nunchuk  
  • Wii Classic Controller  
  • GameCube controller  
+ • USB/Xinput controllers (partial support)  
+
+
+::::::: 2-PLAYER SUPPORT :::::::::::::::::::::::::::::::::::::::::::::
+
+Neo.CD Respin supports 2-player gameplay, allowing two controllers to be used at the same time.
+To enable 2-player mode, connect both controllers before starting the game. The first controller is assigned to Player 1 and the second controller to Player 2.
+Once both controllers are detected, games with 2-player support can be played normally.
 
 
 ::::::: DEFAULT MAPPINGS ::::::::::::::::::::::::::::::::::::::::::
@@ -165,7 +194,17 @@ Wii Classic Controller
   Neo Geo Start = PLUS (+)  
   Neo Geo directions = DPad or Analog Stick  
   Force Memory Card Saving = R  
-  Emu Menu = Home  
+  Emu Menu = Home 
+
+USB Xinput Controller
+  Neo A = B
+  Neo B = A
+  Neo C = Y
+  Neo D = X
+  Start = START
+  Select = BACK
+  Emu Menu = GUIDE
+  Mem Save = RB 
 
 
 ::::::: CREDITS & THANKS ::::::::::::::::::::::::::::::::::::::::::
@@ -189,6 +228,7 @@ Wii Classic Controller
 • TehSkeen forum (2006-2009)  
 • NeoCDRX emu bg - Style 1 (catar1n0)  
 • NeoCDRX menu design (NiuuS)  
+• [libchdr](https://github.com/rtissera/libchdr) by Romain Tisserand (rtissera) and the MAME Team
 
 
 ::::::: RELEVANT LINKS ::::::::::::::::::::::::::::::::::::::::::
