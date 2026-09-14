@@ -36,21 +36,21 @@ All features inherited from the original emulator are the work of NiuuS and the 
 ● CUE/BIN/CDDA and CHD format support;  
 ● CD player integrated into the emulator;  
 ● Customizable controller mapping;  
-● Wii Classic Controller support; USB/XInput Controller partial support;
-● 2-player support;
+● Wii Classic Controller support; USB/XInput Controller partial support;  
+● 2-player support;  
 ● Always Open Source!
 
 ::::::: CHANGELOG ::::::::::::::::::::::::::::::::::::::::::
 
 [1.2.1 - September 14, 2026]
 
-● Added CHD image support, including CDDA playback based on libchdr, developed by Romain Tisserand (rtissera) and the MAME Team;
-● Added 2-player support;
-● Added USB XInput controller support and Controller Mapping.
-● Significantly improved audio stability, fixing music stuttering, pops and crackling.
-● Improved CDDA playback and buffering.
-● Minor GUI improvements and fixes.
-● Various stability improvements and internal fixes.
+● Added CHD image support, including CDDA playback based on libchdr, developed by Romain Tisserand (rtissera) and the MAME Team;  
+● Added 2-player support;  
+● Added USB XInput controller support and Controller Mapping.  
+● Significantly improved audio stability, fixing music stuttering, pops and crackling.  
+● Improved CDDA playback and buffering.  
+● Minor GUI improvements and fixes.  
+● Various stability improvements and internal fixes.  
 **Note:** XInput and Player 2 support still require further testing with different controller models.
 
 
@@ -127,9 +127,9 @@ Example:
 
 or
 
-\NeoCDRE\games\Metal Slug 2\Metal Slug 2.cue
-\NeoCDRE\games\Metal Slug 2\Track01.bin
-\NeoCDRE\games\Metal Slug 2\Track02.bin
+\NeoCDRE\games\Metal Slug 2\Metal Slug 2.cue  
+\NeoCDRE\games\Metal Slug 2\Track01.bin  
+\NeoCDRE\games\Metal Slug 2\Track02.bin  
 
 
 ::::::: SUPPORTED CONTROLLERS ::::::::::::::::::::::::::::::::::::::::::
@@ -196,14 +196,15 @@ Wii Classic Controller
   Force Memory Card Saving = R  
   Emu Menu = Home 
 
-USB Xinput Controller
-  Neo A = B
-  Neo B = A
-  Neo C = Y
-  Neo D = X
-  Start = START
-  Select = BACK
-  Emu Menu = GUIDE
+USB Xinput Controller  
+  Neo A = B  
+  Neo B = A  
+  Neo C = Y  
+  Neo D = X  
+  Start = START  
+  Select = BACK  
+  Neo Geo directions = DPad or Analog Stick  
+  Emu Menu = GUIDE  
   Mem Save = RB 
 
 
