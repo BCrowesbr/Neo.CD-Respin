@@ -42,6 +42,10 @@ All features inherited from the original emulator are the work of NiuuS and the 
 
 ::::::: CHANGELOG ::::::::::::::::::::::::::::::::::::::::::
 
+[1.2.2 - September 15, 2026]
+
+● Improved screen geometry for better CRT display alignment;
+
 [1.2.1 - September 14, 2026]
 
 ● Added CHD image support, including CDDA playback based on libchdr, developed by Romain Tisserand (rtissera) and the MAME Team;  
