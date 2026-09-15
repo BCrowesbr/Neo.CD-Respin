@@ -113,7 +113,7 @@ static float audio_opts[8] = {
 };
 
 #define SETTINGS_MAGIC   "NEOCDRECFG"
-#define SETTINGS_VERSION 3
+#define SETTINGS_VERSION 4
 
 
 /****************************************************************************
@@ -619,7 +619,7 @@ char Coders3[] = "megalomaniac - Neo-CD Redux Unofficial (2013-2016)";
 char Niuus[]   = "NiuuS - NeoCD-RX (2023)";
 char Fun[]     = "Let's keep it going. Wii still lives!";
 char iosVersion[20];
-char appVersion[24]= "Neo.CD Respin 1.2.1";
+char appVersion[24]= "Neo.CD Respin 1.2.2";
 
 #ifdef HW_RVL
 	sprintf(iosVersion, "IOS : %d", IOS_GetVersion());
@@ -631,7 +631,7 @@ char appVersion[24]= "Neo.CD Respin 1.2.1";
   bgcolour = BMPANE;
 
   /* Keep all credit text inside the central backdrop frame. */
-  gprint (250, 160, Title, TXT_DOUBLE);
+  gprint (250, 160, Title, TXT_DOUBLE_TRANSPARENT);
   gprint (60, 198, Intro1, TXT_CREDITS_TALL);
   gprint (60, 218, Intro2, TXT_CREDITS_TALL);
   gprint (60, 252, Softdev, TXT_CREDITS_TALL);
@@ -1122,7 +1122,7 @@ settings_load (void)
 
   if (fscanf(fp, "%15s %d", magic, &version) != 2 ||
       strcmp(magic, SETTINGS_MAGIC) != 0 ||
-      (version != 1 && version != 2 && version != SETTINGS_VERSION))
+      (version != 1 && version != 2 && version != 3 && version != SETTINGS_VERSION))
   {
     fclose(fp);
     return;
@@ -1157,6 +1157,21 @@ settings_load (void)
     SetGameTVMode(GAME_TVMODE_240P);
 
   gui_select_video_mode(GetGameTVMode());
+
+  if (version >= 4)
+  {
+    int hsize, hpos, vsize, vpos;
+    if (fscanf(fp, "%d %d %d %d", &hsize, &hpos, &vsize, &vpos) != 4)
+    {
+      fclose(fp);
+      return;
+    }
+    SetScreenGeometry(hsize, hpos, vsize, vpos);
+  }
+  else
+  {
+    ResetScreenGeometry();
+  }
 
   if (version == 1)
   {
@@ -1224,6 +1239,12 @@ settings_save (void)
   fprintf(fp, "%s %d\n", SETTINGS_MAGIC, SETTINGS_VERSION);
   fprintf(fp, "%d %d %d\n",
           (int)neogeo_region, (int)SaveDevice, GetGameTVMode());
+
+  {
+    int hsize, hpos, vsize, vpos;
+    GetScreenGeometry(&hsize, &hpos, &vsize, &vpos);
+    fprintf(fp, "%d %d %d %d\n", hsize, hpos, vsize, vpos);
+  }
 
   fprintf(fp, "%.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f\n",
           audio_opts[0], audio_opts[1],
@@ -1445,6 +1466,153 @@ controller_mapping_menu (void)
   menu_y_start = previous_menu_y_start;
   menu = prevmenu;
   return 0;
+}
+
+/****************************************************************************
+* Screen geometry menu
+****************************************************************************/
+
+static int screenmenu(void)
+{
+  int prevmenu = menu;
+  int quit = 0;
+  int hsize, hpos, vsize, vpos;
+  int count = 6;
+  int redraw = 1;
+  short joy;
+  static char items[6][22] =
+  {
+    { "Horizontal Size" },
+    { "Horizontal Pos" },
+    { "Vertical Size" },
+    { "Vertical Pos" },
+    { "Reset to Default" },
+    { "Go Back" }
+  };
+
+  menu = 0;
+
+  while (!quit)
+  {
+    GetScreenGeometry(&hsize, &hpos, &vsize, &vpos);
+    sprintf(items[0], "Horizontal Size:%4d", hsize);
+    sprintf(items[1], "Horizontal Pos:%+4d", hpos);
+    sprintf(items[2], "Vertical Size:  %3d", vsize);
+    sprintf(items[3], "Vertical Pos:  %+3d", vpos);
+
+    if (redraw)
+    {
+      draw_menu(&items[0], count, menu);
+      redraw = 0;
+    }
+
+    joy = getMenuButtons();
+
+    if (joy & PAD_BUTTON_UP)
+    {
+      menu--;
+      if (menu < 0) menu = count - 1;
+      redraw = 1;
+    }
+
+    if (joy & PAD_BUTTON_DOWN)
+    {
+      menu++;
+      if (menu == count) menu = 0;
+      redraw = 1;
+    }
+
+    if (joy & PAD_BUTTON_LEFT)
+    {
+      switch (menu)
+      {
+        case 0: hsize -= 2; break;
+        case 1: hpos  -= 2; break;
+        case 2: vsize -= 1; break;
+        case 3: vpos  -= 1; break;
+      }
+      SetScreenGeometry(hsize, hpos, vsize, vpos);
+      redraw = 1;
+    }
+
+    if (joy & PAD_BUTTON_RIGHT)
+    {
+      switch (menu)
+      {
+        case 0: hsize += 2; break;
+        case 1: hpos  += 2; break;
+        case 2: vsize += 1; break;
+        case 3: vpos  += 1; break;
+      }
+      SetScreenGeometry(hsize, hpos, vsize, vpos);
+      redraw = 1;
+    }
+
+    if (joy & PAD_BUTTON_A)
+    {
+      if (menu == 4)
+      {
+        ResetScreenGeometry();
+        redraw = 1;
+      }
+      else if (menu == 5)
+      {
+        quit = 1;
+      }
+    }
+
+    if (joy & PAD_BUTTON_B)
+      quit = 1;
+
+    if (have_ROM && input_menu_button_down())
+    {
+      input_arm_menu_release_latch();
+      settings_save();
+      menu = prevmenu;
+      return 1;
+    }
+  }
+
+  settings_save();
+  menu = prevmenu;
+  return 0;
+}
+
+/****************************************************************************
+* Hidden debug settings menu
+****************************************************************************/
+
+static int debugsettingsmenu(void)
+{
+  int prevmenu = menu;
+  int ret;
+  static char items[2][22] =
+  {
+    { "Screen" },
+    { "Go Back" }
+  };
+
+  menu = 0;
+
+  for (;;)
+  {
+    ret = DoMenu(&items[0], 2);
+
+    if (ret == 0)
+    {
+      if (screenmenu())
+      {
+        menu = prevmenu;
+        return 1;
+      }
+      menu = 0;
+    }
+    else
+    {
+      menu = prevmenu;
+      return 0;
+    }
+  }
 }
 
 /****************************************************************************
@@ -2089,6 +2257,94 @@ cdplayer_menu(void)
   return 0;
 }
 
+/* Hidden main-menu entry: directional Konami sequence opens Debug Settings. */
+static int DoMainMenu(char items[][22], int maxitems)
+{
+  static const u16 debug_code[] =
+  {
+    PAD_BUTTON_UP, PAD_BUTTON_UP,
+    PAD_BUTTON_DOWN, PAD_BUTTON_DOWN,
+    PAD_BUTTON_LEFT, PAD_BUTTON_RIGHT,
+    PAD_BUTTON_LEFT, PAD_BUTTON_RIGHT
+  };
+  int debug_code_pos = 0;
+  u64 debug_last_input = 0;
+  int redraw = 1;
+  int ret = 0;
+  short joy;
+
+  for (;;)
+  {
+    if (redraw)
+    {
+      draw_menu(&items[0], maxitems, menu);
+      redraw = 0;
+    }
+
+    joy = getMenuButtons();
+
+    /*
+     * Deliberately hidden access to Debug Settings:
+     * Up, Up, Down, Down, Left, Right, Left, Right.
+     *
+     * Only cursor directions participate.  Each next direction must be
+     * entered within 1.5 seconds of the previous one.  A wrong direction
+     * resets the sequence silently; if it is Up, it can immediately become
+     * the first step of a new attempt.
+     */
+    if (joy & (PAD_BUTTON_UP | PAD_BUTTON_DOWN |
+               PAD_BUTTON_LEFT | PAD_BUTTON_RIGHT))
+    {
+      u64 now = gettime();
+
+      if (debug_code_pos > 0 &&
+          (now - debug_last_input) > 91125000ULL)
+        debug_code_pos = 0;
+
+      if (joy & debug_code[debug_code_pos])
+      {
+        debug_code_pos++;
+        debug_last_input = now;
+
+        if (debug_code_pos == (int)(sizeof(debug_code) / sizeof(debug_code[0])))
+          return -3;
+      }
+      else
+      {
+        debug_code_pos = (joy & debug_code[0]) ? 1 : 0;
+        debug_last_input = (debug_code_pos != 0) ? now : 0;
+      }
+    }
+
+    if (joy & PAD_BUTTON_UP)
+    {
+      redraw = 1;
+      menu--;
+      if (menu < 0) menu = maxitems - 1;
+    }
+
+    if (joy & PAD_BUTTON_DOWN)
+    {
+      redraw = 1;
+      menu++;
+      if (menu == maxitems) menu = 0;
+    }
+
+    if (joy & PAD_BUTTON_A)
+      return menu;
+
+    if (joy & PAD_BUTTON_B)
+      return -1;
+
+    if (have_ROM && input_menu_button_down())
+    {
+      input_arm_menu_release_latch();
+      ret = -2;
+      return ret;
+    }
+  }
+}
+
 /****************************************************************************
  * Main Menu
  *
@@ -2152,13 +2408,21 @@ int load_mainmenu()
       if (menu >= count)
         menu = count - 1;
 
-		ret = DoMenu (&items[0], count);
+		ret = DoMainMenu (&items[0], count);
 
       if (!have_ROM && ret >= 3)
         ret++;
 
 	switch (ret)
 	{
+      case -3: /*** Hidden Debug Settings (directional code on main menu) ***/
+        if (debugsettingsmenu())
+        {
+          ret = 0;
+          quit = 1;
+        }
+        break;
+
 	  case -2: /*** Emulator-menu button: same action as Play Game ***/
 	  case -1:
       case  0: /*** Return to game ***/

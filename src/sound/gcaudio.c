@@ -44,6 +44,7 @@ static int IsPlaying = 0;
 static void AudioSwitchBuffers(void)
 {
     int len;
+
     whichab ^= 1;
 
     /*

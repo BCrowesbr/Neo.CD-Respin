@@ -851,6 +851,7 @@ u16 getMenuButtons(void)
      */
     if (ud & USBX_A) p |= PAD_BUTTON_A;
     if (ud & USBX_B) p |= PAD_BUTTON_B;
+    if (ud & USBX_START) p |= PAD_BUTTON_START;
 
     if (button_match(ud, mapped_mask(INPUT_DEV_USB_XINPUT, INPUT_MAP_MENU)))
       gui_menu_button_down = 1;
@@ -953,6 +954,7 @@ u16 getMenuButtons(void)
      if (q & WPAD_BUTTON_2)      p |= PAD_BUTTON_A;
      if (q & WPAD_BUTTON_1)      p |= PAD_BUTTON_B;
      if (q & WPAD_BUTTON_HOME)   p |= PAD_TRIGGER_Z;
+     if (q & WPAD_BUTTON_PLUS)   p |= PAD_BUTTON_START;
   
      /* Wii Classic Controller keys */
      if (q & WPAD_CLASSIC_BUTTON_FULL_L) p |= PAD_TRIGGER_L;
@@ -961,6 +963,7 @@ u16 getMenuButtons(void)
      if (q & WPAD_CLASSIC_BUTTON_A)      p |= PAD_BUTTON_A;
      if (q & WPAD_CLASSIC_BUTTON_B)      p |= PAD_BUTTON_B;
      if (q & WPAD_CLASSIC_BUTTON_HOME)   p |= PAD_TRIGGER_Z;
+     if (q & WPAD_CLASSIC_BUTTON_PLUS)   p |= PAD_BUTTON_START;
 #endif
   return p;
 }

@@ -140,6 +140,7 @@ typedef struct
   unsigned int audio_ring_write;
   unsigned int audio_ring_count;
 
+
   unsigned char audio_consume[AUDIO_CONSUME_CACHE];
   int audio_consume_pos;
   int audio_consume_len;
@@ -160,6 +161,7 @@ typedef struct
 } CUESTATE;
 
 static CUESTATE cue;
+
 
 static unsigned int read_le32(const unsigned char *p)
 {
@@ -1598,6 +1600,8 @@ static unsigned int audio_ring_read_bytes(unsigned char *dst,
   cue.audio_ring_read = (cue.audio_ring_read + bytes) % AUDIO_RING_SIZE;
   cue.audio_ring_count -= bytes;
 
+  /* Ignore the normal drain after the producer has reached true track EOF. */
+
   LWP_MutexUnlock(cue.audio_mutex);
   return bytes;
 }
@@ -1888,8 +1892,6 @@ int cue_audio_start(int track)
     cue_audio_stop();
     return 0;
   }
-
-  /* Baseline for the minimum-buffer diagnostic after the initial reserve. */
 
   if (!audio_get_frame(&cue.audio_l0, &cue.audio_r0) ||
       !audio_get_frame(&cue.audio_l1, &cue.audio_r1))

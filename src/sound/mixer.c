@@ -203,8 +203,7 @@ mixer_getaudio (u8 * outbuffer, int length)
    *
    * The small repeats are spread across the complete DMA block instead of
    * being concentrated at its tail.  This lets the queue rebuild gradually
-   * after a stall and avoids the repeated starvation state seen in the
-   * runtime diagnostic.
+   * after a stall and avoids repeated starvation.
    */
   if (frames == 800)
     {
@@ -253,6 +252,7 @@ mixer_getaudio (u8 * outbuffer, int length)
 
   if (i < frames)
     {
+
       while (i < frames)
         {
           *dst++ = mixer_last_frame;

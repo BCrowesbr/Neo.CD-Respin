@@ -56,6 +56,7 @@ void video_clear (void);
 void blitter (void);
 void savescreen (char *buffer);
 
+
 /*-- draw_fix.c functions -------------------------------------------------*/
 void video_draw_fix (void);
 void fixputs (u16 x, u16 y, const char *string);

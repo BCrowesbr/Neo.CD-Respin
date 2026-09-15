@@ -864,6 +864,14 @@ void neogeo_ipl_end(void)
 	neogeo_read_gamename();
 	neogeo_configure_game(config_game_name);
 
+	/* Apply the tested CRT geometry preset for the loaded game. */
+	if (neogeo_prg_memory)
+	{
+		unsigned int ngh = ((unsigned int)neogeo_prg_memory[0x108] << 8) |
+		                   (unsigned int)neogeo_prg_memory[0x109];
+		ApplyGameScreenGeometry(ngh, config_game_name);
+	}
+
 	ipl_in_progress = fix_disable = spr_disable = 0;
 	bios_player_mode = 0;
 	neogeo_cdplayer_patch_enable();

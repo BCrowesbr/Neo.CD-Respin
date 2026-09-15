@@ -102,6 +102,82 @@ static u8 texturemem[TEXSIZE] ATTRIBUTE_ALIGN(32);
 
 static GXTexObj texobj;
 static Mtx view;
+static s16 square[12] ATTRIBUTE_ALIGN(32);
+
+/* User-adjustable CRT screen geometry. Defaults reproduce the current output. */
+static int screen_h_size = 670;
+static int screen_h_pos  = 0;
+static int screen_v_size = 224;
+static int screen_v_pos  = 4;
+
+static void configure_game_geometry(void);
+
+static int clamp_int(int v, int lo, int hi)
+{
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+void SetScreenGeometry(int hsize, int hpos, int vsize, int vpos)
+{
+  screen_h_size = clamp_int(hsize, 560, 720);
+  screen_h_pos  = clamp_int(hpos, -40, 40);
+  screen_v_size = clamp_int(vsize, 200, 224);
+  screen_v_pos  = clamp_int(vpos, -20, 20);
+  configure_game_geometry();
+}
+
+void GetScreenGeometry(int *hsize, int *hpos, int *vsize, int *vpos)
+{
+  if (hsize) *hsize = screen_h_size;
+  if (hpos)  *hpos  = screen_h_pos;
+  if (vsize) *vsize = screen_v_size;
+  if (vpos)  *vpos  = screen_v_pos;
+}
+
+void ResetScreenGeometry(void)
+{
+  SetScreenGeometry(670, 0, 224, 4);
+}
+
+void ApplyGameScreenGeometry(unsigned int ngh, const char *gamename)
+{
+  int vpos = 4;
+
+  /* User-tested Neo Geo CD vertical-position exceptions. */
+  switch (ngh)
+  {
+    /* V -2 */
+    case 0x0201: /* Metal Slug */
+    case 0x0241: /* Metal Slug 2 */
+    case 0x0010: /* Cyber-Lip */
+    case 0x0001: /* NAM-1975 */
+    case 0x0200: /* Neo Turf Masters */
+    case 0x0089: /* Pulstar */
+    case 0x0022: /* Raguy / Blue's Journey */
+      vpos = -2;
+      break;
+
+    /* V 0 */
+    case 0x0083: /* Bust-A-Move / Puzzle Bobble */
+    case 0x0005: /* Magician Lord */
+    case 0x0009: /* Ninja Combat */
+    case 0x0050: /* Ninja Commando */
+    case 0x0229: /* Samurai Shodown RPG */
+      vpos = 0;
+      break;
+
+    default:
+      break;
+  }
+
+  /* Xeno Crisis is an aftermarket NGCD release (BB01), not a classic numeric NGH entry. */
+  if (gamename && stricmp(gamename, "XENO CRISIS") == 0)
+    vpos = -2;
+
+  SetScreenGeometry(670, 0, 224, vpos);
+}
 
 /*
  * 320x224 Neo Geo active image centered in a 640x240 EFB.
@@ -120,48 +196,32 @@ static Mtx view;
 #define GAME_LEFT   0
 #define GAME_RIGHT  640
 
-static s16 square[12] ATTRIBUTE_ALIGN(32);
-
 static void
 configure_game_geometry(void)
 {
-  int top;
-  int bottom;
+  int logical_h = game_logical_height;
+  int hsize = screen_h_size;
+  int vsize = screen_v_size;
+  int hpos = screen_h_pos;
+  int vpos = screen_v_pos;
+  int left, right, top, bottom;
 
-  /*
-   * Preserve the exact 240p geometry:
-   *   224 active lines in 240 -> 8 top / 8 bottom.
-   *
-   * 480i simply double the presentation vertically:
-   *   448 active lines in 480 -> 16 top / 16 bottom.
-   * The Neo Geo texture itself remains native 320x224.
-   */
-  if (game_logical_height == 240)
+  /* 480i doubles vertical geometry; horizontal EFB geometry remains 640. */
+  if (logical_h != 240)
   {
-    top = 8;
-    bottom = 232;
-  }
-  else
-  {
-    top = 16;
-    bottom = 464;
+    vsize *= 2;
+    vpos *= 2;
   }
 
-  square[0]  = GAME_LEFT;
-  square[1]  = top;
-  square[2]  = 0;
+  left = ((640 - hsize) / 2) + hpos;
+  right = left + hsize;
+  top = ((logical_h - vsize) / 2) + vpos;
+  bottom = top + vsize;
 
-  square[3]  = GAME_RIGHT;
-  square[4]  = top;
-  square[5]  = 0;
-
-  square[6]  = GAME_RIGHT;
-  square[7]  = bottom;
-  square[8]  = 0;
-
-  square[9]  = GAME_LEFT;
-  square[10] = bottom;
-  square[11] = 0;
+  square[0] = left;   square[1] = top;    square[2] = 0;
+  square[3] = right;  square[4] = top;    square[5] = 0;
+  square[6] = right;  square[7] = bottom; square[8] = 0;
+  square[9] = left;   square[10] = bottom; square[11] = 0;
 }
 
 static void
@@ -384,6 +444,7 @@ update_video(int width, int height, char *vbuffer)
   vwidth = 320;
   vheight = 224;
 
+
   whichfb ^= 1;
 
   if ((oldvheight != vheight) || (oldvwidth != vwidth))
@@ -431,6 +492,7 @@ update_video(int width, int height, char *vbuffer)
     src3 += 240;
     src4 += 240;
   }
+
 
   DCFlushRange(texturemem, TEXSIZE);
 

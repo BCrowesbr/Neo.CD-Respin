@@ -2,7 +2,7 @@
 <app version="2">
   <name>Neo.CD Respin</name>
   <coder>BCrowesbr</coder>
-  <version>1.2.1</version>
+  <version>1.2.2</version>
   <release_date>20260914</release_date>
   <short_description>Neo Geo CD emulator for Wii</short_description> 
   <long_description>
