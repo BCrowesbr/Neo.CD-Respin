@@ -108,7 +108,7 @@ static s16 square[12] ATTRIBUTE_ALIGN(32);
 static int screen_h_size = 670;
 static int screen_h_pos  = 0;
 static int screen_v_size = 224;
-static int screen_v_pos  = 4;
+static int screen_v_pos  = 2;
 
 static void configure_game_geometry(void);
 
@@ -138,12 +138,12 @@ void GetScreenGeometry(int *hsize, int *hpos, int *vsize, int *vpos)
 
 void ResetScreenGeometry(void)
 {
-  SetScreenGeometry(670, 0, 224, 4);
+  SetScreenGeometry(670, 0, 224, 2);
 }
 
 void ApplyGameScreenGeometry(unsigned int ngh, const char *gamename)
 {
-  int vpos = 4;
+  int vpos = 2;
 
   /* User-tested Neo Geo CD vertical-position exceptions. */
   switch (ngh)
@@ -166,6 +166,12 @@ void ApplyGameScreenGeometry(unsigned int ngh, const char *gamename)
     case 0x0050: /* Ninja Commando */
     case 0x0229: /* Samurai Shodown RPG */
       vpos = 0;
+      break;
+
+    /* V +4 */
+    case 0x0234: /* The Last Blade */
+    case 0x0243: /* The Last Blade 2 */
+      vpos = 4;
       break;
 
     default:
